@@ -14,6 +14,8 @@ async def _():
 
     # Em ambiente de Navegador (WASM), precisamos puxar o Parquet do próprio repositório
     if sys.platform == "emscripten":
+        import micropip
+        await micropip.install("jinja2")
         import pyodide.http
         base_url = "https://r-giacomin.github.io/entregas_sdr/"
         
