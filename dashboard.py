@@ -8,14 +8,12 @@ app = marimo.App(width="full", app_title="Consulta entregas SDR")
 async def _():
     import marimo as mo
     import duckdb
-    import pandas as pd
     import sys
-    import jinja2
 
-    # Em ambiente de Navegador (WASM), precisamos puxar o Parquet do próprio repositório
+    # Em ambiente de Navegador (WASM), precisamos puxar os pacotes explicitamente ANTES do Pandas
     if sys.platform == "emscripten":
         import micropip
-        await micropip.install("jinja2")
+        await micropip.install(["Jinja2", "pandas"])
         import pyodide.http
         base_url = "https://r-giacomin.github.io/entregas_sdr/"
         
@@ -27,6 +25,9 @@ async def _():
         res2 = await pyodide.http.pyfetch(base_url + "classificacao_municipios_SDR.parquet")
         with open("classificacao_municipios_SDR.parquet", "wb") as _f:
             _f.write(await res2.bytes())
+
+    import pandas as pd
+    import jinja2
 
     # 1. Conexão e View
     con = duckdb.connect()
