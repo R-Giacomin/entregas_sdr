@@ -18,12 +18,12 @@ async def _():
         
         # Download para o sistema de arquivos virtual
         res1 = await pyodide.http.pyfetch(base_url + "agregado_detalhado_por_convenio_ano.parquet")
-        with open("agregado_detalhado_por_convenio_ano.parquet", "wb") as f:
-            f.write(await res1.bytes())
+        with open("agregado_detalhado_por_convenio_ano.parquet", "wb") as _f:
+            _f.write(await res1.bytes())
             
         res2 = await pyodide.http.pyfetch(base_url + "classificacao_municipios_SDR.parquet")
-        with open("classificacao_municipios_SDR.parquet", "wb") as f:
-            f.write(await res2.bytes())
+        with open("classificacao_municipios_SDR.parquet", "wb") as _f:
+            _f.write(await res2.bytes())
 
     # 1. Conexão e View
     con = duckdb.connect()
