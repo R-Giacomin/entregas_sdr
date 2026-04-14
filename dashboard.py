@@ -10,6 +10,7 @@ async def _():
     import duckdb
     import pandas as pd
     import sys
+    import jinja2
 
     # Em ambiente de Navegador (WASM), precisamos puxar o Parquet do próprio repositório
     if sys.platform == "emscripten":
