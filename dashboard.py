@@ -56,8 +56,7 @@ def _(ano_max, ano_min, con, mo, opcoes_rotas, rotas, tipologias):
         start=ano_min,
         stop=ano_max,
         step=1,
-        value=(ano_min, ano_max),
-        label="Período"
+        value=(ano_min, ano_max)
     )
     seletor_metrica = mo.ui.dropdown(
         options={
@@ -68,12 +67,11 @@ def _(ano_max, ano_min, con, mo, opcoes_rotas, rotas, tipologias):
             "Quantidade de Municípios": "qtde_municipios",
             "Número de Convênios": "nr_convenios"
         },
-        value="Valor Executado",
-        label="Métrica"
+        value="Valor Executado"
     )
 
     regioes = sorted(con.execute("SELECT DISTINCT nome_regiao FROM municipios WHERE nome_regiao IS NOT NULL").df()["nome_regiao"].tolist())
-    filtro_regiao = mo.ui.multiselect(options=regioes, label="Região")
+    filtro_regiao = mo.ui.multiselect(options=regioes)
 
     flags = ["amazonia_legal", "SUDENE", "semiarido", "faixa_fronteira", "matopiba", "cidades_intermediadoras", "amazonia_azul"]
     # titulos movidos para o layout
@@ -108,7 +106,7 @@ def _(con, filtro_regiao, mo):
         _q_uf = "SELECT DISTINCT sigla_uf FROM municipios WHERE sigla_uf IS NOT NULL"
 
     _ufs_list = sorted(con.execute(_q_uf).df()["sigla_uf"].tolist())
-    filtro_uf = mo.ui.multiselect(options=_ufs_list, label="Sigla UF")
+    filtro_uf = mo.ui.multiselect(options=_ufs_list)
     return (filtro_uf,)
 
 
@@ -128,7 +126,7 @@ def _(con, filtro_regiao, filtro_uf, mo):
 
     _municipios_list = sorted(con.execute(_q_mun).df()["nome"].tolist())
     # O input foi alterado para multiselect para respeitar perfeitamente o domínio dinâmico e suportar todas as seleções
-    filtro_municipio = mo.ui.multiselect(options=_municipios_list, label="Município Proponente")
+    filtro_municipio = mo.ui.multiselect(options=_municipios_list)
     return (filtro_municipio,)
 
 
@@ -142,11 +140,18 @@ def _(
     slicer_anos,
 ):
     advanced_filters = mo.hstack(
-        [filtro_regiao, filtro_uf, filtro_municipio], justify="start"
+        [
+            mo.vstack([mo.md("**Região**"), filtro_regiao], align="start"),
+            mo.vstack([mo.md("**Estado**"), filtro_uf], align="start"),
+            mo.vstack([mo.md("**Município Proponente**"), filtro_municipio], align="start")
+        ], justify="start"
     )
 
     filtros = mo.vstack([
-        mo.hstack([slicer_anos, seletor_metrica], justify="start"),
+        mo.hstack([
+            mo.vstack([mo.md("**Período**"), slicer_anos], align="start"),
+            mo.vstack([mo.md("**Métrica**"), seletor_metrica], align="start")
+        ], justify="start"),
         advanced_filters
     ])
 
