@@ -13,7 +13,7 @@ async def _():
     # Em ambiente de Navegador (WASM), precisamos puxar os pacotes explicitamente ANTES do Pandas
     if sys.platform == "emscripten":
         import micropip
-        await micropip.install(["Jinja2", "pandas"])
+        await micropip.install(["Jinja2", "pandas", "openpyxl"])
         import pyodide.http
         base_url = "https://r-giacomin.github.io/entregas_sdr/"
         
@@ -200,6 +200,7 @@ def _(
     seletor_metrica,
     slicer_anos,
 ):
+    import io
     ano_inicio, ano_fim = slicer_anos.value
 
     def format_in(vals):
@@ -273,6 +274,11 @@ def _(
     if df_filtrado_sdr.empty:
         dash_content = mo.md("⚠️ Nenhum dado encontrado para os filtros selecionados.")
     else:
+
+        def gerar_excel(df: pd.DataFrame) -> bytes:
+            buffer = io.BytesIO()
+            df.to_excel(buffer)
+            return buffer.getvalue()
         if seletor_metrica.value == "populacao":
             # Mapa da população para garantir a soma estritamente distinta baseada nos códigos de município (importante para os Totais)
             pop_map = df_filtrado_sdr.set_index('COD_MUNIC_IBGE')['populacao'].to_dict()
@@ -393,11 +399,22 @@ def _(
         titulo_metrica = nomes_metricas.get(seletor_metrica.value, "Métrica Selecionada")
 
         dash_content = mo.vstack([
-            mo.md(f"### Evolução por {titulo_metrica} (Resumo por Divisão)"),
+            mo.hstack([
+                mo.md(f"### Evolução por {titulo_metrica} (Resumo por Divisão)"),
+                mo.download(data=lambda: gerar_excel(tabela_divisao), filename="resumo_divisao.xlsx", label="💾 Baixar XLSX")
+            ], justify="space-between", align="center"),
             mo.Html(f"<div style='width: 100%; max-width: 100%; overflow-x: auto; margin-bottom: 2rem;'>{estilo_tabela_divisao.to_html()}</div>"),
-            mo.md(f"### Detalhamento por Categoria"),
+            
+            mo.hstack([
+                mo.md(f"### Detalhamento por Categoria"),
+                mo.download(data=lambda: gerar_excel(tabela_dinamica), filename="detalhe_categoria.xlsx", label="💾 Baixar XLSX")
+            ], justify="space-between", align="center"),
             mo.Html(f"<div style='width: 100%; max-width: 100%; overflow-x: auto; margin-bottom: 2rem;'>{estilo_tabela.to_html()}</div>"),
-            mo.md(f"### Resumo por Tipologia PNDR 3"),
+            
+            mo.hstack([
+                mo.md(f"### Resumo por Tipologia PNDR 3"),
+                mo.download(data=lambda: gerar_excel(tabela_tipologia), filename="resumo_tipologia.xlsx", label="💾 Baixar XLSX")
+            ], justify="space-between", align="center"),
             mo.Html(f"<div style='width: 100%; max-width: 100%; overflow-x: auto;'>{estilo_tabela_tipologia.to_html()}</div>")
         ])
 
