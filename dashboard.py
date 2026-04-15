@@ -620,7 +620,7 @@ def _(
     3. **Obras e Infraestrutura:** Classificação detalhada (Pavimentação, Pontes, Barragens, Edificações, etc.).
     4. **Máquinas Pesadas e Caminhões:** Subclassificação avançada de frotas (Linha amarela, basculantes, compactadores, pipas).
     5. **Tratores e Implementos:** Diferenciação entre o maquinário trator e seus implementos secundários.
-    6. **Políticas Regionais (Rotas):** Mapeamento transversal no objeto da proposta para cadeias produtivas (Cacau, Mel, Ovinocultura, Açaí, TIC, etc.).
+    6. **Políticas Regionais (Rotas):** Mapeamento transversal no objeto da proposta para cadeias produtivas (Cacau, Mel, Cordeiro, Açaí, TIC, etc.).
 
     *Nota de Correção:* Equipamentos com preenchimento inconsistente de quantidade no documento de liquidação (menor que 1 ou maior que 100) tiveram seu valor unitário forçado para `1` para evitar distorções de contagem.
 
@@ -628,7 +628,7 @@ def _(
     Para recuperar as dimensões físicas das obras (m²), construiu-se uma CTE (Common Table Expression) específica:
     * O uso de funções de janela (`DENSE_RANK()`) garantiu a extração exclusiva da meta associada à **versão mais recente e validada** do Projeto Básico.
     * Aplicou-se a condição de existência (`EXISTS`) para garantir que apenas convênios com pagamentos reais transitassem para a base de métricas.
-    * O valor da metragem extraída (`MAX_QUANTIDADE_M2`) foi isolado por convênio e filtrado apenas para obras medidas estritamente em "M2".
+    * O valor da metragem extraída (`QUANTIDADE_M2`) foi isolado por convênio e filtrado apenas para obras medidas estritamente em "M2".
 
     ---
 
@@ -658,8 +658,8 @@ def _(
     A consolidação da área pavimentada por pagamento obedeceu a uma lógica condicional bipartida:
 
     * **Cenário A (Dados Válidos):** Se o convênio possui metragem confiável, a área executada na nota fiscal foi calculada rateando a metragem total pela fração financeira do pagamento:
-      $M^2\_Estimado = \left( \frac{Valor\_Agregado}{Soma\_Valor\_Agregado} \right) \times Max\_Quantidade\_M^2$
-    * **Cenário B (Dados Ausentes ou Outliers):** Se a metragem original foi reprovada nos limites de R$10-R$1500, a área foi matematicamente imputada dividindo o valor daquele pagamento específico pela mediana do custo do ano correspondente:
+      $M^2\_Estimado = \left( \frac{Valor\_Agregado}{Soma\_Valor\_Agregado} \right) \times Quantidade\_M^2$
+    * **Cenário B (Dados Ausentes ou Outliers):** Se a metragem original foi reprovada nos limites de **R\$ 10 - R\$ 1.500**, a área foi matematicamente imputada dividindo o valor daquele pagamento específico pela mediana do custo do ano correspondente:
       $M^2\_Estimado = \frac{Valor\_Agregado}{Mediana\_Custo\_M^2\_do\_Ano}$
 
     ---
