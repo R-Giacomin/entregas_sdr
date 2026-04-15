@@ -486,7 +486,7 @@ def _(
 
         if seletor_metrica.value == "VALOR_AGREGADO":
             formatador = fmt_moeda
-        elif seletor_metrica.value in ["Quantidade Agregada", "populacao", "qtde_municipios", "nr_convenios"]:
+        elif seletor_metrica.value in ["QTD_AGREGADA", "populacao", "qtde_municipios", "nr_convenios"]:
             formatador = fmt_int
         else:
             formatador = fmt_float
@@ -634,6 +634,8 @@ def _(
     3. **Limites Aplicados:** Valores de custo unitário abaixo de **R$ 10,00/m²** ou acima de **R$ 1.500,00/m²** foram classificados como anomalias.
     4. **Tratamento:** Registros fora dessa banda de plausibilidade tiveram sua quantidade original de M² anulada (`NaN`), preparando o terreno para a imputação algorítmica.
 
+    ---
+
     ## 7. Modelagem e Estimativa Avançada de Área Pavimentada
     Para lidar com a granularidade dos pagamentos (diversas notas fiscais em anos diferentes para a mesma obra) e com os dados anulados no passo anterior, desenvolveu-se um modelo de estimativa de área executada.
 
@@ -657,7 +659,7 @@ def _(
     ---
 
     ## 8. Limitações
-    As classificações podem conter erros devido à falta de informação ou informação incerta ou ambígua no objeto da proposta, ou descrição dos itens no documento de liquidação, como Nota Fiscal. 
+    As classificações podem conter erros devido à falta de informação ou informação incerta ou ambígua no objeto da proposta, nome ou descrição dos itens no documento de liquidação, como Nota Fiscal. 
 
     """)
         ])
