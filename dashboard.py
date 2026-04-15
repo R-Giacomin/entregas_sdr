@@ -259,6 +259,12 @@ def _(
             aside, [data-testid="sidebar"], .sidebar {{
                 background-color: #0f172a !important;
                 border-right: 1px solid #1e293b !important;
+                color: #f8fafc !important;
+            }}
+
+            /* Força que todos os textos paralelos na barra lateral ganhem cor clara no modo noturno */
+            aside p, aside strong, [data-testid="sidebar"] p, [data-testid="sidebar"] strong, .sidebar p, .sidebar strong {{
+                color: #f8fafc !important;
             }}
             .govbr-sidebar-title {{
                 color: #ffffff;
