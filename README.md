@@ -60,20 +60,19 @@ Para lidar com a granularidade dos pagamentos (diversas notas fiscais em anos di
 Para os convênios com metragem válida, o valor real do M² foi calculado levando em conta o grau de conclusão financeira da obra e o peso daquele pagamento específico no todo:
 
 $$
-Custo_{m^2} = \frac{Valor\_Agregado}{\left( \frac{Valor\_Agregado}{Soma\_Valor\_Agregado} \right) \times \left( \frac{Valor\_Desembolsado\_Conv}{Valor\_Repasse\_Conv} \right) \times Max\_Quantidade\_M^2}
+Custo_{m^2} = \frac{Valor\ Agregado}{\left( \frac{Valor\ Agregado}{Soma\ Valor\ Agregado} \right) \times \left( \frac{Valor\ Desembolsado\ Conv}{Valor\ Repasse\ Conv} \right) \times Max\ Quantidade\ M^2}
 $$
 
 A partir dessa fórmula, extraiu-se a **mediana do custo por metro quadrado para cada ano de pagamento** (`MEDIANA_CUSTO_M2`), criando um referencial de mercado ajustado à inflação de cada período.
 
-### 7.2. Imputação e Estimativa Final (`M2_estimado`)
+### 7.2. Imputação e Estimativa Final (`M2_estimado`) por ano
 A consolidação da área pavimentada por pagamento obedeceu a uma lógica condicional bipartida:
 
 * **Cenário A (Dados Válidos):** Se o convênio possui metragem confiável, a área executada na nota fiscal foi calculada rateando a metragem total pela fração financeira do pagamento:
-  $M^2\_Estimado = \left( \frac{Valor\_Agregado}{Soma\_Valor\_Agregado} \right) \times Quantidade\_M^2$
+  $M^2\_Estimado = \left( \frac{Valor\ Agregado}{Soma\ Valor\ Agregado} \right) \times Quantidade\ M^2$
 * **Cenário B (Dados Ausentes ou Outliers):** Se a metragem original foi reprovada nos limites de **R\$ 10 - R\$ 1.500**, a área foi matematicamente imputada dividindo o valor daquele pagamento específico pela mediana do custo do ano correspondente:
-  $$
- M^2\_Estimado = \frac{Valor\_Agregado}{Mediana\_Custo\_M^2\_do\_Ano}
-  $$
+
+$M^{2} {Estimado} = \frac{Valor\ Agregado}{Mediana\ Custo\ M^{2}}$
 
 ---
 

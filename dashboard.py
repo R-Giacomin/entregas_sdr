@@ -143,17 +143,17 @@ def _(
         [
             mo.vstack([mo.md("**Região**"), filtro_regiao], align="start"),
             mo.vstack([mo.md("**Estado**"), filtro_uf], align="start"),
-            mo.vstack([mo.md("**Município Proponente**"), filtro_municipio], align="start")
-        ], justify="start"
+            mo.vstack([mo.md("**Município**"), filtro_municipio], align="start")
+        ], justify="start", align="start"
     )
 
     filtros = mo.vstack([
         mo.hstack([
-            mo.vstack([mo.md("**Período**"), slicer_anos], align="start"),
+            mo.vstack([mo.md("**Período (Anos)**"), slicer_anos], align="start"),
             mo.vstack([mo.md("**Métrica**"), seletor_metrica], align="start")
-        ], justify="start"),
+        ], justify="start", align="start"),
         advanced_filters
-    ])
+    ], align="start")
 
     layout = mo.Html(f"""
     <!-- Importando as fontes Padrão GovBR -->
@@ -205,6 +205,7 @@ def _(
 
         .govbr-main-header {{
             padding: 15px 30px 15px 30px;
+            text-align: left !important;
         }}
 
         .govbr-orgao {{
@@ -503,15 +504,16 @@ def _(
             formatador = fmt_float
 
         estilos_css = [
-            {'selector': 'th', 'props': [('text-align', 'center'), ('font-weight', 'bold'), ('padding', '12px 15px'), ('background-color', '#0c326f'), ('color', '#ffffff'), ('font-family', "'Rawline', sans-serif"), ('border-right', '1px solid #1351b4'), ('border-bottom', '2px solid #1351b4')]},
+            {'selector': 'th', 'props': [('text-align', 'center'), ('font-weight', 'bold'), ('padding', '6px 10px'), ('background-color', '#0c326f'), ('color', '#ffffff'), ('font-family', "'Rawline', sans-serif"), ('border-right', '1px solid #1351b4'), ('border-bottom', '2px solid #1351b4'), ('font-size', '0.9rem')]},
             {'selector': 'th.row_heading', 'props': [('text-align', 'left'), ('background-color', '#f4f4f4'), ('color', '#333'), ('border-right', '1px solid #ddd')]},
             {'selector': 'tr:hover', 'props': [('background-color', 'rgba(19, 81, 180, 0.08)')]},
             {'selector': 'tr:last-child', 'props': [('font-weight', 'bold'), ('border-top', '2px solid #1351b4'), ('background-color', '#eef2f9')]}
         ]
         propriedades_css = {
-            'text-align': 'right', 'padding': '10px 15px',
+            'text-align': 'right', 'padding': '4px 10px',
             'border-bottom': '1px solid #e0e0e0', 'white-space': 'nowrap',
-            'font-family': "'Rawline', 'Raleway', sans-serif"
+            'font-family': "'Rawline', 'Raleway', sans-serif",
+            'font-size': '0.9rem'
         }
 
         estilo_tabela = (
@@ -574,6 +576,34 @@ def _(
         except Exception as e:
             alerta_carga = mo.md(f"*(Aviso: Não foi possível carregar a data de carga - {str(e)})*")
 
+        nota_html_base = """
+        <div style="font-size: 0.85rem; color: #555; background-color: #f8f9fa; padding: 12px 15px; border-left: 4px solid #1351b4; margin-bottom: 2rem; border-radius: 4px;">
+            <strong style="color: #0c326f;">Nota{plural}:</strong>
+            {content}
+        </div>
+        """
+
+        if seletor_metrica.value == "QTD_AGREGADA":
+            content = """
+            <ul style="margin-top: 6px; margin-bottom: 0; padding-left: 20px;">
+                <li><strong>Para Equipamentos:</strong> Somou-se o número físico de itens pagos</li>
+                <li><strong>Para Obras, Capacitações e Projetos:</strong> Contou-se o número de Propostas/Contratos distintos por ano (uma vez que uma obra não se mede unitariamente pela soma de NFs, mas pelo seu contrato).</li>
+                <li><strong>Para Outros:</strong> Não foi mensurado devido à heterogeneidade e granularidade dos produtos e serviços</li>
+            </ul>
+            """
+            nota_dinamica = mo.Html(nota_html_base.format(plural="s", content=content))
+        elif seletor_metrica.value == "populacao":
+            content = """<div style="margin-top: 6px;">O total de cada categoria não é a soma dos anos. São somadas para cada categoria a população de municípios distintos que constaram no período selecionado.</div>"""
+            nota_dinamica = mo.Html(nota_html_base.format(plural="", content=content))
+        elif seletor_metrica.value == "qtde_municipios":
+            content = """<div style="margin-top: 6px;">O total de cada categoria não é a soma dos anos. São somadas para cada categoria os municípios distintos que constaram no período selecionado.</div>"""
+            nota_dinamica = mo.Html(nota_html_base.format(plural="", content=content))
+        elif seletor_metrica.value == "nr_convenios":
+            content = """<div style="margin-top: 6px;">O total de cada categoria não é a soma dos anos. São somadas para cada categoria os convênios distintos que constaram no período selecionado.</div>"""
+            nota_dinamica = mo.Html(nota_html_base.format(plural="", content=content))
+        else:
+            nota_dinamica = mo.Html("")
+
         dash_content = mo.vstack([
             alerta_carga,
             mo.hstack([
@@ -592,9 +622,20 @@ def _(
                 mo.md(f"### Resumo por Tipologia PNDR 3"),
                 mo.download(data=lambda: gerar_excel(tabela_tipologia), filename="resumo_tipologia.xlsx", label="💾 Baixar XLSX")
             ], justify="space-between", align="center"),
-            mo.Html(f"<div style='width: 100%; max-width: 100%; overflow-x: auto; margin-bottom: 3rem;'>{estilo_tabela_tipologia.to_html()}</div>"),
+            mo.Html(f"<div style='width: 100%; max-width: 100%; overflow-x: auto; margin-bottom: 2rem;'>{estilo_tabela_tipologia.to_html()}</div>"),
 
-            mo.md(r"""
+            nota_dinamica,
+
+            mo.Html(f"""
+            <style>
+                .relatorio-metodologico h1 {{ font-size: 1.1rem; margin-top: 15px; margin-bottom: 5px; color: #0c326f; }}
+                .relatorio-metodologico h2 {{ font-size: 1rem; margin-top: 12px; margin-bottom: 4px; color: #1351b4; }}
+                .relatorio-metodologico h3 {{ font-size: 0.95rem; margin-top: 10px; margin-bottom: 3px; }}
+                .relatorio-metodologico p, .relatorio-metodologico li {{ font-size: 0.9rem; line-height: 1.4; margin-bottom: 4px; color: #444; }}
+                .relatorio-metodologico ul, .relatorio-metodologico ol {{ margin-bottom: 8px; padding-left: 20px; margin-top: 0px; }}
+                .relatorio-metodologico hr {{ margin: 15px 0; border: 0; border-top: 1px solid #ddd; }}
+            </style>
+            <div class="relatorio-metodologico">{mo.md(r'''
     ---
     # Relatório Metodológico: Consolidação e Estimativa de Entregas da SDR (Siconv)
 
@@ -654,25 +695,25 @@ def _(
     Para os convênios com metragem válida, o valor real do M² foi calculado levando em conta o grau de conclusão financeira da obra e o peso daquele pagamento específico no todo:
 
     $$
-    Custo_{m^2} = \frac{Valor\_Agregado}{\left( \frac{Valor\_Agregado}{Soma\_Valor\_Agregado} \right) \times \left( \frac{Valor\_Desembolsado\_Conv}{Valor\_Repasse\_Conv} \right) \times Max\_Quantidade\_M^2}
+    Custo_{m^2} = \frac{Valor\ Agregado}{\left( \frac{Valor\ Agregado}{Soma\ Valor\ Agregado} \right) \times \left( \frac{Valor\ Desembolsado\ Conv}{Valor\ Repasse\ Conv} \right) \times Max\ Quantidade\ M^2}
     $$
 
     A partir dessa fórmula, extraiu-se a **mediana do custo por metro quadrado para cada ano de pagamento** (`MEDIANA_CUSTO_M2`), criando um referencial de mercado ajustado à inflação de cada período.
 
-    ### 7.2. Imputação e Estimativa Final (`M2_estimado`)
+    ### 7.2. Imputação e Estimativa Final (`M2_estimado`) por ano
     A consolidação da área pavimentada por pagamento obedeceu a uma lógica condicional bipartida:
 
     * **Cenário A (Dados Válidos):** Se o convênio possui metragem confiável, a área executada na nota fiscal foi calculada rateando a metragem total pela fração financeira do pagamento:
-      $M^2\_Estimado = \left( \frac{Valor\_Agregado}{Soma\_Valor\_Agregado} \right) \times Quantidade\_M^2$
+      $M^2\_Estimado = \left( \frac{Valor\ Agregado}{Soma\ Valor\ Agregado} \right) \times Quantidade\ M^2$
     * **Cenário B (Dados Ausentes ou Outliers):** Se a metragem original foi reprovada nos limites de **R\$ 10 - R\$ 1.500**, a área foi matematicamente imputada dividindo o valor daquele pagamento específico pela mediana do custo do ano correspondente:
-      $M^2\_Estimado = \frac{Valor\_Agregado}{Mediana\_Custo\_M^2\_do\_Ano}$
+
+    $M^{2} {Estimado} = \frac{Valor\ Agregado}{Mediana\ Custo\ M^{2}}$
 
     ---
 
     ## 8. Limitações
     As classificações podem conter erros devido à falta de informação ou informação incerta ou ambígua no objeto da proposta, nome ou descrição dos itens no documento de liquidação, como Nota Fiscal. 
-
-    """)
+    ''').text}</div>""")
         ])
 
     scrollable_container = mo.Html(f"""
