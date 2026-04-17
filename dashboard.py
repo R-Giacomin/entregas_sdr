@@ -258,16 +258,29 @@ def _(
         }}
 
         @media (prefers-color-scheme: dark) {{
+            body, html, marimo-app, marimo-island, main {{
+                background-color: #020617 !important;
+                color: #f8fafc !important;
+            }}
             .govbr-header {{
                 background-color: #0f172a !important;
                 border-bottom: 2px solid #1e293b !important;
+            }}
+            .govbr-orgao {{
+                color: #e2e8f0 !important;
+            }}
+            .govbr-title {{
+                color: #60a5fa !important;
+            }}
+            /* Cores dos labels de filtros no header */
+            .govbr-main-header strong, .govbr-main-header p {{
+                color: #f8fafc !important;
             }}
             aside, [data-testid="sidebar"], .sidebar {{
                 background-color: #0f172a !important;
                 border-right: 1px solid #1e293b !important;
                 color: #f8fafc !important;
             }}
-
             /* Força que todos os textos paralelos na barra lateral ganhem cor clara no modo noturno */
             aside p, aside strong, [data-testid="sidebar"] p, [data-testid="sidebar"] strong, .sidebar p, .sidebar strong {{
                 color: #f8fafc !important;
@@ -276,6 +289,67 @@ def _(
                 color: #ffffff;
                 border-bottom: 2px solid #334155;
             }}
+
+            /* Estilização para Alertas e Notas em Modo Escuro */
+            .govbr-alert {{
+                background-color: #1e293b !important;
+                color: #cbd5e1 !important;
+                border-left: 4px solid #3b82f6 !important;
+            }}
+            .govbr-alert strong {{
+                color: #f8fafc !important;
+            }}
+            .govbr-note {{
+                background-color: #1e293b !important;
+                color: #cbd5e1 !important;
+                border-left: 4px solid #3b82f6 !important;
+            }}
+            .govbr-note strong {{
+                color: #f8fafc !important;
+            }}
+
+            /* Ajuste de Tabelas em Modo Escuro */
+            .govbr-table-container th.row_heading {{
+                background-color: #1e293b !important;
+                color: #f8fafc !important;
+                border-right: 1px solid #334155 !important;
+            }}
+            .govbr-table-container td {{
+                border-bottom: 1px solid #334155 !important;
+            }}
+            .govbr-table-container tr:last-child {{
+                background-color: #1e293b !important;
+                color: #f8fafc !important;
+                border-top: 2px solid #3b82f6 !important;
+            }}
+            .govbr-table-container tr:hover {{
+                background-color: rgba(59, 130, 246, 0.15) !important;
+            }}
+        }}
+
+        /* Classes base para Alertas e Notas (Modo Claro) */
+        .govbr-alert {{
+            color: #0c326f;
+            background-color: #eef2f9;
+            border-left: 4px solid #1351b4;
+            padding: 10px 15px;
+            margin-bottom: 20px;
+            font-family: 'Rawline', sans-serif;
+            font-size: 0.95rem;
+            border-radius: 4px;
+            display: inline-block;
+        }}
+        .govbr-note {{
+            font-size: 0.85rem;
+            color: #555;
+            background-color: #f8f9fa;
+            padding: 12px 15px;
+            border-left: 4px solid #1351b4;
+            margin-bottom: 2rem;
+            border-radius: 4px;
+        }}
+        .govbr-note strong {{
+            color: #0c326f;
         }}
     </style>
 
@@ -566,7 +640,7 @@ def _(
                 texto_fonte = "Fonte dos dados: Transferegov.br (Convênios, Contratos de Repasse e Termos de Fomento)"
 
                 alerta_carga = mo.Html(
-                    f"<div style='color: #0c326f; background-color: #eef2f9; border-left: 4px solid #1351b4; padding: 10px 15px; margin-bottom: 20px; font-family: \"Rawline\", sans-serif; font-size: 0.95rem; border-radius: 4px; display: inline-block;'>"
+                    f"<div class='govbr-alert'>"
                     f"<div><i class='far fa-calendar-alt'></i> <strong>{texto_data_carga}</strong></div>"
                     f"<div style='margin-top: 5px;'><i class='fas fa-database'></i> <strong>{texto_fonte}</strong></div>"
                     f"</div>"
@@ -577,8 +651,8 @@ def _(
             alerta_carga = mo.md(f"*(Aviso: Não foi possível carregar a data de carga - {str(e)})*")
 
         nota_html_base = """
-        <div style="font-size: 0.85rem; color: #555; background-color: #f8f9fa; padding: 12px 15px; border-left: 4px solid #1351b4; margin-bottom: 2rem; border-radius: 4px;">
-            <strong style="color: #0c326f;">Nota{plural}:</strong>
+        <div class="govbr-note">
+            <strong>Nota{plural}:</strong>
             {content}
         </div>
         """
@@ -610,19 +684,19 @@ def _(
                 mo.md(f"### Evolução por {titulo_metrica} (Resumo por Divisão)"),
                 mo.download(data=lambda: gerar_excel(tabela_divisao), filename="resumo_divisao.xlsx", label="💾 Baixar XLSX")
             ], justify="space-between", align="center"),
-            mo.Html(f"<div style='width: 100%; max-width: 100%; overflow-x: auto; margin-bottom: 2rem;'>{estilo_tabela_divisao.to_html()}</div>"),
+            mo.Html(f"<div class='govbr-table-container' style='width: 100%; max-width: 100%; overflow-x: auto; margin-bottom: 2rem;'>{estilo_tabela_divisao.to_html()}</div>"),
 
             mo.hstack([
                 mo.md(f"### Detalhamento por Categoria"),
                 mo.download(data=lambda: gerar_excel(tabela_dinamica), filename="detalhe_categoria.xlsx", label="💾 Baixar XLSX")
             ], justify="space-between", align="center"),
-            mo.Html(f"<div style='width: 100%; max-width: 100%; overflow-x: auto; margin-bottom: 2rem;'>{estilo_tabela.to_html()}</div>"),
+            mo.Html(f"<div class='govbr-table-container' style='width: 100%; max-width: 100%; overflow-x: auto; margin-bottom: 2rem;'>{estilo_tabela.to_html()}</div>"),
 
             mo.hstack([
                 mo.md(f"### Resumo por Tipologia PNDR 3"),
                 mo.download(data=lambda: gerar_excel(tabela_tipologia), filename="resumo_tipologia.xlsx", label="💾 Baixar XLSX")
             ], justify="space-between", align="center"),
-            mo.Html(f"<div style='width: 100%; max-width: 100%; overflow-x: auto; margin-bottom: 2rem;'>{estilo_tabela_tipologia.to_html()}</div>"),
+            mo.Html(f"<div class='govbr-table-container' style='width: 100%; max-width: 100%; overflow-x: auto; margin-bottom: 2rem;'>{estilo_tabela_tipologia.to_html()}</div>"),
 
             nota_dinamica,
 
@@ -634,6 +708,13 @@ def _(
                 .relatorio-metodologico p, .relatorio-metodologico li {{ font-size: 0.9rem; line-height: 1.4; margin-bottom: 4px; color: #444; }}
                 .relatorio-metodologico ul, .relatorio-metodologico ol {{ margin-bottom: 8px; padding-left: 20px; margin-top: 0px; }}
                 .relatorio-metodologico hr {{ margin: 15px 0; border: 0; border-top: 1px solid #ddd; }}
+
+                @media (prefers-color-scheme: dark) {{
+                    .relatorio-metodologico h1 {{ color: #60a5fa !important; }}
+                    .relatorio-metodologico h2 {{ color: #93c5fd !important; }}
+                    .relatorio-metodologico p, .relatorio-metodologico li {{ color: #cbd5e1 !important; }}
+                    .relatorio-metodologico hr {{ border-top: 1px solid #334155; }}
+                }}
             </style>
             <div class="relatorio-metodologico">{mo.md(r'''
     ---
