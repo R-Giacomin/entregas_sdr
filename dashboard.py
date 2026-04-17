@@ -418,10 +418,10 @@ def _(filtro_flags, filtro_instrumento, filtro_sit_convenio, filtro_tipologia, f
 
     sidebar_content = mo.vstack([
         mo.Html("<div class='govbr-sidebar-title'><i class='fas fa-file-contract'></i> SITUAÇÃO DO CONVÊNIO</div>"),
-        mo.vstack([mo.md("**Situação**"), filtro_sit_convenio], align="start"),
+        mo.hstack([mo.md("**Situação**"), filtro_sit_convenio], justify="space-between", align="center"),
         mo.Html("<div style='height: 20px;'></div>"),
         mo.Html("<div class='govbr-sidebar-title'><i class='fas fa-handshake'></i> INSTRUMENTO</div>"),
-        mo.vstack([mo.md("**Instrumento Ativo**"), filtro_instrumento], align="start"),
+        mo.hstack([mo.md("**Instrumento Ativo**"), filtro_instrumento], justify="space-between", align="center"),
         mo.Html("<div style='height: 20px;'></div>"),
         mo.Html("<div class='govbr-sidebar-title'><i class='fas fa-globe'></i> ABRANGÊNCIA</div>"),
         *_flags_layout,
