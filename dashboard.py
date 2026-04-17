@@ -316,6 +316,16 @@ def _(
             }}
             .govbr-table-container td {{
                 border-bottom: 1px solid #334155 !important;
+                color: #cbd5e1 !important; /* Texto das células em modo escuro */
+            }}
+            .govbr-table-container {{
+                background-color: #0f172a !important; /* Fundo escuro para a área da tabela */
+                padding: 15px;
+                border-radius: 8px;
+            }}
+            .govbr-table-container table {{
+                background-color: #0f172a !important;
+                color: #cbd5e1 !important;
             }}
             .govbr-table-container tr:last-child {{
                 background-color: #1e293b !important;
@@ -710,8 +720,15 @@ def _(
                 .relatorio-metodologico hr {{ margin: 15px 0; border: 0; border-top: 1px solid #ddd; }}
 
                 @media (prefers-color-scheme: dark) {{
+                    .relatorio-metodologico {{
+                        background-color: #0f172a !important;
+                        padding: 20px;
+                        border-radius: 8px;
+                        margin-top: 20px;
+                    }}
                     .relatorio-metodologico h1 {{ color: #60a5fa !important; }}
                     .relatorio-metodologico h2 {{ color: #93c5fd !important; }}
+                    .relatorio-metodologico h3 {{ color: #bfdbfe !important; }}
                     .relatorio-metodologico p, .relatorio-metodologico li {{ color: #cbd5e1 !important; }}
                     .relatorio-metodologico hr {{ border-top: 1px solid #334155; }}
                 }}
