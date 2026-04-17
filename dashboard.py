@@ -47,11 +47,15 @@ async def _():
     anos_int = [int(a) for a in anos_df["ANO_pgto"].tolist() if pd.notna(a)]
     ano_min = min(anos_int) if anos_int else 2000
     ano_max = max(anos_int) if anos_int else 2024
-    return ano_max, ano_min, con, mo, opcoes_rotas, pd, rotas, tipologias
+
+    # 3. Busca valores únicos para os novos filtros de situação
+    situacoes_convenio = sorted(con.execute("SELECT DISTINCT SIT_CONVENIO FROM sdr_agregado WHERE SIT_CONVENIO IS NOT NULL").df()["SIT_CONVENIO"].tolist())
+    instrumentos_ativos = sorted(con.execute("SELECT DISTINCT INSTRUMENTO_ATIVO FROM sdr_agregado WHERE INSTRUMENTO_ATIVO IS NOT NULL").df()["INSTRUMENTO_ATIVO"].tolist())
+    return ano_max, ano_min, con, instrumentos_ativos, mo, opcoes_rotas, pd, rotas, situacoes_convenio, tipologias
 
 
 @app.cell
-def _(ano_max, ano_min, con, mo, opcoes_rotas, rotas, tipologias):
+def _(ano_max, ano_min, con, instrumentos_ativos, mo, opcoes_rotas, rotas, situacoes_convenio, tipologias):
     slicer_anos = mo.ui.range_slider(
         start=ano_min,
         stop=ano_max,
@@ -86,9 +90,21 @@ def _(ano_max, ano_min, con, mo, opcoes_rotas, rotas, tipologias):
         r: mo.ui.multiselect(options=opcoes_rotas[r]) 
         for r in rotas
     })
+
+    # Novos filtros — todas as opções selecionadas por padrão (lista vazia = sem filtro ativo)
+    filtro_sit_convenio = mo.ui.multiselect(
+        options=situacoes_convenio,
+        value=situacoes_convenio  # seleciona tudo por padrão
+    )
+    filtro_instrumento = mo.ui.multiselect(
+        options=instrumentos_ativos,
+        value=instrumentos_ativos  # seleciona tudo por padrão
+    )
     return (
         filtro_flags,
+        filtro_instrumento,
         filtro_regiao,
+        filtro_sit_convenio,
         filtro_tipologia,
         filtros_rotas,
         seletor_metrica,
@@ -383,7 +399,7 @@ def _(
 
 
 @app.cell
-def _(filtro_flags, filtro_tipologia, filtros_rotas, mo):
+def _(filtro_flags, filtro_instrumento, filtro_sit_convenio, filtro_tipologia, filtros_rotas, mo):
     titulos_flags = {
         "amazonia_legal": "Amazônia Legal", "SUDENE": "SUDENE", "semiarido": "Semiárido",
         "faixa_fronteira": "Faixa de Fronteira", "matopiba": "MATOPIBA",
@@ -401,6 +417,12 @@ def _(filtro_flags, filtro_tipologia, filtros_rotas, mo):
     ]
 
     sidebar_content = mo.vstack([
+        mo.Html("<div class='govbr-sidebar-title'><i class='fas fa-file-contract'></i> SITUAÇÃO DO CONVÊNIO</div>"),
+        mo.vstack([mo.md("**Situação**"), filtro_sit_convenio], align="start"),
+        mo.Html("<div style='height: 20px;'></div>"),
+        mo.Html("<div class='govbr-sidebar-title'><i class='fas fa-handshake'></i> INSTRUMENTO</div>"),
+        mo.vstack([mo.md("**Instrumento Ativo**"), filtro_instrumento], align="start"),
+        mo.Html("<div style='height: 20px;'></div>"),
         mo.Html("<div class='govbr-sidebar-title'><i class='fas fa-globe'></i> ABRANGÊNCIA</div>"),
         *_flags_layout,
         mo.Html("<div style='height: 20px;'></div>"),
@@ -420,8 +442,10 @@ def _(filtro_flags, filtro_tipologia, filtros_rotas, mo):
 def _(
     con,
     filtro_flags,
+    filtro_instrumento,
     filtro_municipio,
     filtro_regiao,
+    filtro_sit_convenio,
     filtro_tipologia,
     filtro_uf,
     filtros_rotas,
@@ -440,6 +464,14 @@ def _(
         return f"({items})"
 
     condicoes = [f"s.ANO_pgto BETWEEN {ano_inicio} AND {ano_fim}"]
+
+    # Filtro de Situação do Convênio — só filtra se não estiver com tudo selecionado
+    if filtro_sit_convenio.value:
+        condicoes.append(f"s.SIT_CONVENIO IN {format_in(filtro_sit_convenio.value)}")
+
+    # Filtro de Instrumento Ativo
+    if filtro_instrumento.value:
+        condicoes.append(f"s.INSTRUMENTO_ATIVO IN {format_in(filtro_instrumento.value)}")
 
     if filtro_municipio.value:
         condicoes.append(f"m.nome IN {format_in(filtro_municipio.value)}")
