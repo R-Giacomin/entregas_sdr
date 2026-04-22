@@ -32,7 +32,12 @@ async def _():
     # 1. Conexão e View
     con = duckdb.connect()
     con.execute("CREATE OR REPLACE VIEW sdr_agregado AS SELECT * FROM 'agregado_detalhado_por_convenio_ano.parquet'")
-    con.execute("CREATE OR REPLACE VIEW municipios AS SELECT * FROM 'classificacao_municipios_SDR.parquet'")
+    con.execute("""
+        CREATE OR REPLACE VIEW municipios AS
+        SELECT *,
+            CASE WHEN nome_regiao = 'Centro-Oeste' THEN 1 ELSE 0 END AS SUDECO
+        FROM 'classificacao_municipios_SDR.parquet'
+    """)
 
     # 1.1 Busca valores únicos para os filtros gerais
     tipologias = sorted(con.execute("SELECT DISTINCT Tipologia_PNDR_3 FROM municipios WHERE Tipologia_PNDR_3 IS NOT NULL").df()["Tipologia_PNDR_3"].tolist())
@@ -77,7 +82,7 @@ def _(ano_max, ano_min, con, instrumentos_ativos, mo, opcoes_rotas, rotas, situa
     regioes = sorted(con.execute("SELECT DISTINCT nome_regiao FROM municipios WHERE nome_regiao IS NOT NULL").df()["nome_regiao"].tolist())
     filtro_regiao = mo.ui.multiselect(options=regioes)
 
-    flags = ["amazonia_legal", "SUDENE", "semiarido", "faixa_fronteira", "matopiba", "cidades_intermediadoras", "amazonia_azul"]
+    flags = ["amazonia_legal", "SUDECO", "SUDENE", "semiarido", "faixa_fronteira", "matopiba", "cidades_intermediadoras", "amazonia_azul"]
     # titulos movidos para o layout
     filtro_flags = mo.ui.dictionary({
         f: mo.ui.dropdown(options=["Todos", "Sim", "Não"], value="Todos") 
@@ -401,7 +406,8 @@ def _(
 @app.cell
 def _(filtro_flags, filtro_instrumento, filtro_sit_convenio, filtro_tipologia, filtros_rotas, mo):
     titulos_flags = {
-        "amazonia_legal": "Amazônia Legal", "SUDENE": "SUDENE", "semiarido": "Semiárido",
+        "amazonia_legal": "SUDAM", "SUDECO": "SUDECO",
+        "SUDENE": "SUDENE", "semiarido": "Semiárido",
         "faixa_fronteira": "Faixa de Fronteira", "matopiba": "MATOPIBA",
         "cidades_intermediadoras": "Cidades Intermediadoras", "amazonia_azul": "Amazônia Azul"
     }
