@@ -26,12 +26,17 @@ async def _():
         with open("classificacao_municipios_SDR.parquet", "wb") as _f:
             _f.write(await res2.bytes())
 
+        res3 = await pyodide.http.pyfetch(base_url + "a_executar.parquet")
+        with open("a_executar.parquet", "wb") as _f:
+            _f.write(await res3.bytes())
+
     import pandas as pd
     import jinja2
 
     # 1. Conexão e View
     con = duckdb.connect()
     con.execute("CREATE OR REPLACE VIEW sdr_agregado AS SELECT * FROM 'agregado_detalhado_por_convenio_ano.parquet'")
+    con.execute("CREATE OR REPLACE VIEW a_executar AS SELECT * FROM 'a_executar.parquet'")
     con.execute("""
         CREATE OR REPLACE VIEW municipios AS
         SELECT *,
@@ -60,7 +65,7 @@ async def _():
 
 
 @app.cell
-def _(ano_max, ano_min, con, instrumentos_ativos, mo, opcoes_rotas, rotas, situacoes_convenio, tipologias):
+def _(ano_max, ano_min, con, mo, opcoes_rotas, rotas, situacoes_convenio, tipologias):
     slicer_anos = mo.ui.range_slider(
         start=ano_min,
         stop=ano_max,
@@ -70,6 +75,7 @@ def _(ano_max, ano_min, con, instrumentos_ativos, mo, opcoes_rotas, rotas, situa
     seletor_metrica = mo.ui.dropdown(
         options={
             "Valor Executado": "VALOR_AGREGADO",
+            "Valor a executar": "VALOR_A_EXECUTAR",
             "Quantidade": "QTD_AGREGADA",
             "KMs Estimados": "KM_estimado",
             "População Beneficiária": "populacao",
@@ -101,13 +107,8 @@ def _(ano_max, ano_min, con, instrumentos_ativos, mo, opcoes_rotas, rotas, situa
         options=situacoes_convenio,
         value=situacoes_convenio  # seleciona tudo por padrão
     )
-    filtro_instrumento = mo.ui.multiselect(
-        options=instrumentos_ativos,
-        value=instrumentos_ativos  # seleciona tudo por padrão
-    )
     return (
         filtro_flags,
-        filtro_instrumento,
         filtro_regiao,
         filtro_sit_convenio,
         filtro_tipologia,
@@ -115,6 +116,17 @@ def _(ano_max, ano_min, con, instrumentos_ativos, mo, opcoes_rotas, rotas, situa
         seletor_metrica,
         slicer_anos,
     )
+
+
+@app.cell
+def _(instrumentos_ativos, mo, seletor_metrica):
+    _opcoes = ["SIM"] if seletor_metrica.value == "VALOR_A_EXECUTAR" else instrumentos_ativos
+    _valor = ["SIM"] if seletor_metrica.value == "VALOR_A_EXECUTAR" else instrumentos_ativos
+    filtro_instrumento = mo.ui.multiselect(
+        options=_opcoes,
+        value=_valor
+    )
+    return (filtro_instrumento,)
 
 
 @app.cell
@@ -469,14 +481,15 @@ def _(
         items = ", ".join([f"'{v}'" for v in vals])
         return f"({items})"
 
-    condicoes = [f"s.ANO_pgto BETWEEN {ano_inicio} AND {ano_fim}"]
+    ano_col = "ANO_Convenio" if seletor_metrica.value == "VALOR_A_EXECUTAR" else "ANO_pgto"
+    condicoes = [f"s.{ano_col} BETWEEN {ano_inicio} AND {ano_fim}"]
 
     # Filtro de Situação do Convênio — só filtra se não estiver com tudo selecionado
     if filtro_sit_convenio.value:
         condicoes.append(f"s.SIT_CONVENIO IN {format_in(filtro_sit_convenio.value)}")
 
     # Filtro de Instrumento Ativo
-    if filtro_instrumento.value:
+    if filtro_instrumento.value and seletor_metrica.value != "VALOR_A_EXECUTAR":
         condicoes.append(f"s.INSTRUMENTO_ATIVO IN {format_in(filtro_instrumento.value)}")
 
     if filtro_municipio.value:
@@ -503,7 +516,17 @@ def _(
 
     where_clause = " AND ".join(condicoes)
 
-    if seletor_metrica.value == "populacao":
+    if seletor_metrica.value == "VALOR_A_EXECUTAR":
+        query_sdr = f"""
+            SELECT s.ANO_Convenio AS "ANO Convenio", s.VALOR_A_EXECUTAR, m.Tipologia_PNDR_3, m.nome_regiao, m.sigla_uf, 
+                   s.data_carga, s.NR_CONVENIO, s.SIT_CONVENIO, s.COD_MUNIC_IBGE, s.MUNIC_PROPONENTE, s.UF_PROPONENTE, s.MAX_VL_GLOBAL_CONV, s.SOMA_VALOR_AGREGADO, s.PERC_EXECUCAO
+            FROM a_executar s
+            LEFT JOIN municipios m ON s.COD_MUNIC_IBGE = m.COD_MUNIC_IBGE
+            WHERE {where_clause}
+        """
+        df_filtrado_sdr = con.execute(query_sdr).df()
+
+    elif seletor_metrica.value == "populacao":
         query_sdr = f"""
             SELECT s.Divisao, s.CATEGORIA_SUGERIDA, s.ANO_pgto, s.COD_MUNIC_IBGE, m."População 2022" AS populacao, m.Tipologia_PNDR_3
             FROM sdr_agregado s
@@ -560,32 +583,55 @@ def _(
             aggfunc = 'sum'
             val_col = seletor_metrica.value
 
-        tabela_dinamica = pd.pivot_table(
-            data=df_filtrado_sdr,
-            index=['Divisao', 'CATEGORIA_SUGERIDA'],
-            columns=['ANO_pgto'],
-            values=val_col,
-            aggfunc=aggfunc,
-            fill_value=0,
-            margins=True,
-            margins_name='Total Geral'
-        )
+        if seletor_metrica.value == "VALOR_A_EXECUTAR":
+            tabela_regiao = pd.pivot_table(
+                data=df_filtrado_sdr,
+                index=['nome_regiao'],
+                columns=['ANO Convenio'],
+                values=val_col,
+                aggfunc=aggfunc,
+                fill_value=0,
+                margins=True,
+                margins_name='Total Geral'
+            )
+            tabela_uf = pd.pivot_table(
+                data=df_filtrado_sdr,
+                index=['sigla_uf'],
+                columns=['ANO Convenio'],
+                values=val_col,
+                aggfunc=aggfunc,
+                fill_value=0,
+                margins=True,
+                margins_name='Total Geral'
+            )
+        else:
+            tabela_dinamica = pd.pivot_table(
+                data=df_filtrado_sdr,
+                index=['Divisao', 'CATEGORIA_SUGERIDA'],
+                columns=['ANO_pgto'],
+                values=val_col,
+                aggfunc=aggfunc,
+                fill_value=0,
+                margins=True,
+                margins_name='Total Geral'
+            )
 
-        tabela_divisao = pd.pivot_table(
-            data=df_filtrado_sdr,
-            index=['Divisao'],
-            columns=['ANO_pgto'],
-            values=val_col,
-            aggfunc=aggfunc,
-            fill_value=0,
-            margins=True,
-            margins_name='Total Geral'
-        )
+            tabela_divisao = pd.pivot_table(
+                data=df_filtrado_sdr,
+                index=['Divisao'],
+                columns=['ANO_pgto'],
+                values=val_col,
+                aggfunc=aggfunc,
+                fill_value=0,
+                margins=True,
+                margins_name='Total Geral'
+            )
 
+        col_ano = "ANO Convenio" if seletor_metrica.value == "VALOR_A_EXECUTAR" else "ANO_pgto"
         tabela_tipologia = pd.pivot_table(
             data=df_filtrado_sdr,
             index=['Tipologia_PNDR_3'],
-            columns=['ANO_pgto'],
+            columns=[col_ano],
             values=val_col,
             aggfunc=aggfunc,
             fill_value=0,
@@ -594,8 +640,12 @@ def _(
         )
 
         colunas_completas = list(range(ano_inicio, ano_fim + 1)) + ['Total Geral']
-        tabela_dinamica = tabela_dinamica.reindex(columns=colunas_completas, fill_value=0)
-        tabela_divisao = tabela_divisao.reindex(columns=colunas_completas, fill_value=0)
+        if seletor_metrica.value == "VALOR_A_EXECUTAR":
+            tabela_regiao = tabela_regiao.reindex(columns=colunas_completas, fill_value=0)
+            tabela_uf = tabela_uf.reindex(columns=colunas_completas, fill_value=0)
+        else:
+            tabela_dinamica = tabela_dinamica.reindex(columns=colunas_completas, fill_value=0)
+            tabela_divisao = tabela_divisao.reindex(columns=colunas_completas, fill_value=0)
         tabela_tipologia = tabela_tipologia.reindex(columns=colunas_completas, fill_value=0)
 
         # Ordenação customizada para tipologias
@@ -618,7 +668,7 @@ def _(
         def fmt_int(v): return "-" if pd.isna(v) or v == 0 else f"{int(v):,}".replace(",", ".")
         def fmt_float(v): return "-" if pd.isna(v) or v == 0 else f"{v:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
 
-        if seletor_metrica.value == "VALOR_AGREGADO":
+        if seletor_metrica.value in ["VALOR_AGREGADO", "VALOR_A_EXECUTAR"]:
             formatador = fmt_moeda
         elif seletor_metrica.value in ["QTD_AGREGADA", "populacao", "qtde_municipios", "nr_convenios"]:
             formatador = fmt_int
@@ -638,19 +688,34 @@ def _(
             'font-size': '0.9rem'
         }
 
-        estilo_tabela = (
-            tabela_dinamica.style
-            .format(formatador)
-            .set_properties(**propriedades_css)
-            .set_table_styles(estilos_css)
-        )
+        if seletor_metrica.value == "VALOR_A_EXECUTAR":
+            estilo_tabela_regiao = (
+                tabela_regiao.style
+                .format(formatador)
+                .set_properties(**propriedades_css)
+                .set_table_styles(estilos_css)
+            )
 
-        estilo_tabela_divisao = (
-            tabela_divisao.style
-            .format(formatador)
-            .set_properties(**propriedades_css)
-            .set_table_styles(estilos_css)
-        )
+            estilo_tabela_uf = (
+                tabela_uf.style
+                .format(formatador)
+                .set_properties(**propriedades_css)
+                .set_table_styles(estilos_css)
+            )
+        else:
+            estilo_tabela = (
+                tabela_dinamica.style
+                .format(formatador)
+                .set_properties(**propriedades_css)
+                .set_table_styles(estilos_css)
+            )
+
+            estilo_tabela_divisao = (
+                tabela_divisao.style
+                .format(formatador)
+                .set_properties(**propriedades_css)
+                .set_table_styles(estilos_css)
+            )
 
         estilo_tabela_tipologia = (
             tabela_tipologia.style
@@ -661,6 +726,7 @@ def _(
 
         nomes_metricas = {
             "VALOR_AGREGADO": "Valor Agregado",
+            "VALOR_A_EXECUTAR": "Valor a executar",
             "QTD_AGREGADA": "Quantidade",
             "KM_estimado": "KMs Estimados",
             "populacao": "População Beneficiária",
@@ -670,7 +736,8 @@ def _(
         titulo_metrica = nomes_metricas.get(seletor_metrica.value, "Métrica Selecionada")
 
         try:
-            val_carga_raw = con.execute("SELECT data_carga FROM sdr_agregado LIMIT 1").fetchone()[0]
+            tabela_origem = "a_executar" if seletor_metrica.value == "VALOR_A_EXECUTAR" else "sdr_agregado"
+            val_carga_raw = con.execute(f"SELECT data_carga FROM {tabela_origem} LIMIT 1").fetchone()[0]
             if val_carga_raw:
                 val_str = str(val_carga_raw).strip()
                 data_limpa = val_str  # ✅ fallback: garante que data_limpa sempre existe
@@ -726,29 +793,7 @@ def _(
         else:
             nota_dinamica = mo.Html("")
 
-        dash_content = mo.vstack([
-            alerta_carga,
-            mo.hstack([
-                mo.md(f"### Evolução por {titulo_metrica} (Resumo por Divisão)"),
-                mo.download(data=lambda: gerar_excel(tabela_divisao), filename="resumo_divisao.xlsx", label="💾 Baixar XLSX")
-            ], justify="space-between", align="center"),
-            mo.Html(f"<div class='govbr-table-container' style='width: 100%; max-width: 100%; overflow-x: auto; margin-bottom: 2rem;'>{estilo_tabela_divisao.to_html()}</div>"),
-
-            mo.hstack([
-                mo.md(f"### Detalhamento por Categoria"),
-                mo.download(data=lambda: gerar_excel(tabela_dinamica), filename="detalhe_categoria.xlsx", label="💾 Baixar XLSX")
-            ], justify="space-between", align="center"),
-            mo.Html(f"<div class='govbr-table-container' style='width: 100%; max-width: 100%; overflow-x: auto; margin-bottom: 2rem;'>{estilo_tabela.to_html()}</div>"),
-
-            mo.hstack([
-                mo.md(f"### Resumo por Tipologia PNDR 3"),
-                mo.download(data=lambda: gerar_excel(tabela_tipologia), filename="resumo_tipologia.xlsx", label="💾 Baixar XLSX")
-            ], justify="space-between", align="center"),
-            mo.Html(f"<div class='govbr-table-container' style='width: 100%; max-width: 100%; overflow-x: auto; margin-bottom: 2rem;'>{estilo_tabela_tipologia.to_html()}</div>"),
-
-            nota_dinamica,
-
-            mo.Html(f"""
+        relatorio_metodologico_html = mo.Html(f"""
             <style>
                 .relatorio-metodologico h1 {{ font-size: 1.1rem; margin-top: 15px; margin-bottom: 5px; color: #0c326f; }}
                 .relatorio-metodologico h2 {{ font-size: 1rem; margin-top: 12px; margin-bottom: 4px; color: #1351b4; }}
@@ -850,7 +895,61 @@ def _(
     ## 8. Limitações
     As classificações podem conter erros devido à falta de informação ou informação incerta ou ambígua no objeto da proposta, nome ou descrição dos itens no documento de liquidação, como Nota Fiscal. 
     ''').text}</div>""")
-        ])
+
+        if seletor_metrica.value == "VALOR_A_EXECUTAR":
+            dash_content = mo.vstack([
+                alerta_carga,
+                mo.hstack([
+                    mo.md(f"### Resumo por Região"),
+                    mo.download(data=lambda: gerar_excel(tabela_regiao), filename="resumo_regiao.xlsx", label="💾 Baixar XLSX")
+                ], justify="space-between", align="center"),
+                mo.Html(f"<div class='govbr-table-container' style='width: 100%; max-width: 100%; overflow-x: auto; margin-bottom: 2rem;'>{estilo_tabela_regiao.to_html()}</div>"),
+
+                mo.hstack([
+                    mo.md(f"### Resumo por UF"),
+                    mo.download(data=lambda: gerar_excel(tabela_uf), filename="resumo_uf.xlsx", label="💾 Baixar XLSX")
+                ], justify="space-between", align="center"),
+                mo.Html(f"<div class='govbr-table-container' style='width: 100%; max-width: 100%; overflow-x: auto; margin-bottom: 2rem;'>{estilo_tabela_uf.to_html()}</div>"),
+
+                mo.hstack([
+                    mo.md(f"### Resumo por Tipologia PNDR 3"),
+                    mo.download(data=lambda: gerar_excel(tabela_tipologia), filename="resumo_tipologia.xlsx", label="💾 Baixar XLSX")
+                ], justify="space-between", align="center"),
+                mo.Html(f"<div class='govbr-table-container' style='width: 100%; max-width: 100%; overflow-x: auto; margin-bottom: 2rem;'>{estilo_tabela_tipologia.to_html()}</div>"),
+
+                mo.hstack([
+                    mo.md(f"### Download Base Completa: A Executar"),
+                    mo.download(data=lambda: gerar_excel(df_filtrado_sdr), filename="a_executar_completo.xlsx", label="💾 Baixar XLSX Completo")
+                ], justify="space-between", align="center"),
+
+                nota_dinamica,
+                relatorio_metodologico_html
+            ])
+        else:
+            dash_content = mo.vstack([
+                alerta_carga,
+                mo.hstack([
+                    mo.md(f"### Evolução por {titulo_metrica} (Resumo por Divisão)"),
+                    mo.download(data=lambda: gerar_excel(tabela_divisao), filename="resumo_divisao.xlsx", label="💾 Baixar XLSX")
+                ], justify="space-between", align="center"),
+                mo.Html(f"<div class='govbr-table-container' style='width: 100%; max-width: 100%; overflow-x: auto; margin-bottom: 2rem;'>{estilo_tabela_divisao.to_html()}</div>"),
+    
+                mo.hstack([
+                    mo.md(f"### Detalhamento por Categoria"),
+                    mo.download(data=lambda: gerar_excel(tabela_dinamica), filename="detalhe_categoria.xlsx", label="💾 Baixar XLSX")
+                ], justify="space-between", align="center"),
+                mo.Html(f"<div class='govbr-table-container' style='width: 100%; max-width: 100%; overflow-x: auto; margin-bottom: 2rem;'>{estilo_tabela.to_html()}</div>"),
+    
+                mo.hstack([
+                    mo.md(f"### Resumo por Tipologia PNDR 3"),
+                    mo.download(data=lambda: gerar_excel(tabela_tipologia), filename="resumo_tipologia.xlsx", label="💾 Baixar XLSX")
+                ], justify="space-between", align="center"),
+                mo.Html(f"<div class='govbr-table-container' style='width: 100%; max-width: 100%; overflow-x: auto; margin-bottom: 2rem;'>{estilo_tabela_tipologia.to_html()}</div>"),
+    
+                nota_dinamica,
+    
+                relatorio_metodologico_html
+            ])
 
     scrollable_container = mo.Html(f"""
     <div style="height: calc(100vh - 280px); overflow-y: auto; overflow-x: hidden; padding-right: 15px; padding-bottom: 150px;">
