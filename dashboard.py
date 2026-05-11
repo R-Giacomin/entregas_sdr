@@ -596,7 +596,7 @@ def _(
             )
             tabela_uf = pd.pivot_table(
                 data=df_filtrado_sdr,
-                index=['sigla_uf'],
+                index=['UF'],
                 columns=['ANO Convenio'],
                 values=val_col,
                 aggfunc=aggfunc,
