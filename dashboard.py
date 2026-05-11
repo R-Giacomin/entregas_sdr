@@ -518,7 +518,7 @@ def _(
 
     if seletor_metrica.value == "VALOR_A_EXECUTAR":
         query_sdr = f"""
-            SELECT s.ANO_Convenio AS "ANO Convenio", s.VALOR_A_EXECUTAR, m.Tipologia_PNDR_3, m.nome_regiao, m.sigla_uf, 
+            SELECT s.ANO_Convenio AS "ANO Convenio", s.VALOR_A_EXECUTAR, m.Tipologia_PNDR_3, m.nome_regiao, m.sigla_uf, m.nome AS Municipio,
                    s.data_carga, s.NR_CONVENIO, s.SIT_CONVENIO, s.COD_MUNIC_IBGE, s.MUNIC_PROPONENTE, s.UF_PROPONENTE, s.MAX_VL_GLOBAL_CONV, s.SOMA_VALOR_AGREGADO, s.PERC_EXECUCAO
             FROM a_executar s
             LEFT JOIN municipios m ON s.COD_MUNIC_IBGE = m.COD_MUNIC_IBGE
@@ -528,7 +528,7 @@ def _(
 
     elif seletor_metrica.value == "populacao":
         query_sdr = f"""
-            SELECT s.Divisao, s.CATEGORIA_SUGERIDA, s.ANO_pgto, s.COD_MUNIC_IBGE, m."População 2022" AS populacao, m.Tipologia_PNDR_3
+            SELECT s.Divisao, s.CATEGORIA_SUGERIDA, s.ANO_pgto, s.COD_MUNIC_IBGE, m."População 2022" AS populacao, m.Tipologia_PNDR_3, m.nome AS Municipio
             FROM sdr_agregado s
             LEFT JOIN municipios m ON s.COD_MUNIC_IBGE = m.COD_MUNIC_IBGE
             WHERE {where_clause}
@@ -538,7 +538,7 @@ def _(
 
     elif seletor_metrica.value == "qtde_municipios":
         query_sdr = f"""
-            SELECT s.Divisao, s.CATEGORIA_SUGERIDA, s.ANO_pgto, s.COD_MUNIC_IBGE, m.Tipologia_PNDR_3
+            SELECT s.Divisao, s.CATEGORIA_SUGERIDA, s.ANO_pgto, s.COD_MUNIC_IBGE, m.Tipologia_PNDR_3, m.nome AS Municipio
             FROM sdr_agregado s
             LEFT JOIN municipios m ON s.COD_MUNIC_IBGE = m.COD_MUNIC_IBGE
             WHERE {where_clause}
@@ -547,7 +547,7 @@ def _(
 
     elif seletor_metrica.value == "nr_convenios":
         query_sdr = f"""
-            SELECT s.Divisao, s.CATEGORIA_SUGERIDA, s.ANO_pgto, s.NR_CONVENIO, m.Tipologia_PNDR_3
+            SELECT s.Divisao, s.CATEGORIA_SUGERIDA, s.ANO_pgto, s.NR_CONVENIO, m.Tipologia_PNDR_3, m.nome AS Municipio
             FROM sdr_agregado s
             LEFT JOIN municipios m ON s.COD_MUNIC_IBGE = m.COD_MUNIC_IBGE
             WHERE {where_clause}
@@ -556,7 +556,7 @@ def _(
 
     else:
         query_sdr = f"""
-            SELECT s.Divisao, s.CATEGORIA_SUGERIDA, s.ANO_pgto, s.{seletor_metrica.value}, m.Tipologia_PNDR_3
+            SELECT s.Divisao, s.CATEGORIA_SUGERIDA, s.ANO_pgto, s.{seletor_metrica.value}, m.Tipologia_PNDR_3, m.nome AS Municipio
             FROM sdr_agregado s
             LEFT JOIN municipios m ON s.COD_MUNIC_IBGE = m.COD_MUNIC_IBGE
             WHERE {where_clause}
@@ -639,6 +639,17 @@ def _(
             margins_name='Total Geral'
         )
 
+        tabela_municipio = pd.pivot_table(
+            data=df_filtrado_sdr,
+            index=['Municipio'],
+            columns=[col_ano],
+            values=val_col,
+            aggfunc=aggfunc,
+            fill_value=0,
+            margins=True,
+            margins_name='Total Geral'
+        )
+
         colunas_completas = list(range(ano_inicio, ano_fim + 1)) + ['Total Geral']
         if seletor_metrica.value == "VALOR_A_EXECUTAR":
             tabela_regiao = tabela_regiao.reindex(columns=colunas_completas, fill_value=0)
@@ -647,6 +658,7 @@ def _(
             tabela_dinamica = tabela_dinamica.reindex(columns=colunas_completas, fill_value=0)
             tabela_divisao = tabela_divisao.reindex(columns=colunas_completas, fill_value=0)
         tabela_tipologia = tabela_tipologia.reindex(columns=colunas_completas, fill_value=0)
+        tabela_municipio = tabela_municipio.reindex(columns=colunas_completas, fill_value=0)
 
         # Ordenação customizada para tipologias
         ordem_tipologia_desejada = [
@@ -723,6 +735,10 @@ def _(
             .set_properties(**propriedades_css)
             .set_table_styles(estilos_css)
         )
+
+        df_municipio_ui = tabela_municipio.reset_index()
+        format_map = {col: formatador for col in df_municipio_ui.columns if col != 'Municipio'}
+        tabela_municipio_ui = mo.ui.table(df_municipio_ui, pagination=True, selection=None, format_mapping=format_map)
 
         nomes_metricas = {
             "VALOR_AGREGADO": "Valor Agregado",
@@ -918,6 +934,13 @@ def _(
                 mo.Html(f"<div class='govbr-table-container' style='width: 100%; max-width: 100%; overflow-x: auto; margin-bottom: 2rem;'>{estilo_tabela_tipologia.to_html()}</div>"),
 
                 mo.hstack([
+                    mo.md(f"### Resumo por Município"),
+                    mo.download(data=lambda: gerar_excel(tabela_municipio), filename="resumo_municipio.xlsx", label="💾 Baixar XLSX")
+                ], justify="space-between", align="center"),
+                tabela_municipio_ui,
+                mo.Html("<div style='height: 2rem;'></div>"),
+
+                mo.hstack([
                     mo.md(f"### Download Base Completa: A Executar"),
                     mo.download(data=lambda: gerar_excel(df_filtrado_sdr), filename="a_executar_completo.xlsx", label="💾 Baixar XLSX Completo")
                 ], justify="space-between", align="center"),
@@ -946,6 +969,13 @@ def _(
                 ], justify="space-between", align="center"),
                 mo.Html(f"<div class='govbr-table-container' style='width: 100%; max-width: 100%; overflow-x: auto; margin-bottom: 2rem;'>{estilo_tabela_tipologia.to_html()}</div>"),
     
+                mo.hstack([
+                    mo.md(f"### Resumo por Município"),
+                    mo.download(data=lambda: gerar_excel(tabela_municipio), filename="resumo_municipio.xlsx", label="💾 Baixar XLSX")
+                ], justify="space-between", align="center"),
+                tabela_municipio_ui,
+                mo.Html("<div style='height: 2rem;'></div>"),
+
                 nota_dinamica,
     
                 relatorio_metodologico_html
