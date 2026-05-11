@@ -518,7 +518,7 @@ def _(
 
     if seletor_metrica.value == "VALOR_A_EXECUTAR":
         query_sdr = f"""
-            SELECT s.ANO_Convenio AS "ANO Convenio", s.VALOR_A_EXECUTAR, m.Tipologia_PNDR_3, m.nome_regiao, m.sigla_uf, m.nome AS Municipio,
+            SELECT s.ANO_Convenio AS "ANO Convenio", s.VALOR_A_EXECUTAR, m.Tipologia_PNDR_3, m.nome_regiao, m.sigla_uf AS UF, m.nome AS Municipio,
                    s.data_carga, s.NR_CONVENIO, s.SIT_CONVENIO, s.COD_MUNIC_IBGE, s.MUNIC_PROPONENTE, s.UF_PROPONENTE, s.MAX_VL_GLOBAL_CONV, s.SOMA_VALOR_AGREGADO, s.PERC_EXECUCAO
             FROM a_executar s
             LEFT JOIN municipios m ON s.COD_MUNIC_IBGE = m.COD_MUNIC_IBGE
@@ -528,7 +528,7 @@ def _(
 
     elif seletor_metrica.value == "populacao":
         query_sdr = f"""
-            SELECT s.Divisao, s.CATEGORIA_SUGERIDA, s.ANO_pgto, s.COD_MUNIC_IBGE, m."População 2022" AS populacao, m.Tipologia_PNDR_3, m.nome AS Municipio
+            SELECT s.Divisao, s.CATEGORIA_SUGERIDA, s.ANO_pgto, s.COD_MUNIC_IBGE, m."População 2022" AS populacao, m.Tipologia_PNDR_3, m.sigla_uf AS UF, m.nome AS Municipio
             FROM sdr_agregado s
             LEFT JOIN municipios m ON s.COD_MUNIC_IBGE = m.COD_MUNIC_IBGE
             WHERE {where_clause}
@@ -538,7 +538,7 @@ def _(
 
     elif seletor_metrica.value == "qtde_municipios":
         query_sdr = f"""
-            SELECT s.Divisao, s.CATEGORIA_SUGERIDA, s.ANO_pgto, s.COD_MUNIC_IBGE, m.Tipologia_PNDR_3, m.nome AS Municipio
+            SELECT s.Divisao, s.CATEGORIA_SUGERIDA, s.ANO_pgto, s.COD_MUNIC_IBGE, m.Tipologia_PNDR_3, m.sigla_uf AS UF, m.nome AS Municipio
             FROM sdr_agregado s
             LEFT JOIN municipios m ON s.COD_MUNIC_IBGE = m.COD_MUNIC_IBGE
             WHERE {where_clause}
@@ -547,7 +547,7 @@ def _(
 
     elif seletor_metrica.value == "nr_convenios":
         query_sdr = f"""
-            SELECT s.Divisao, s.CATEGORIA_SUGERIDA, s.ANO_pgto, s.NR_CONVENIO, m.Tipologia_PNDR_3, m.nome AS Municipio
+            SELECT s.Divisao, s.CATEGORIA_SUGERIDA, s.ANO_pgto, s.NR_CONVENIO, s.COD_MUNIC_IBGE, m.Tipologia_PNDR_3, m.sigla_uf AS UF, m.nome AS Municipio
             FROM sdr_agregado s
             LEFT JOIN municipios m ON s.COD_MUNIC_IBGE = m.COD_MUNIC_IBGE
             WHERE {where_clause}
@@ -556,7 +556,7 @@ def _(
 
     else:
         query_sdr = f"""
-            SELECT s.Divisao, s.CATEGORIA_SUGERIDA, s.ANO_pgto, s.{seletor_metrica.value}, m.Tipologia_PNDR_3, m.nome AS Municipio
+            SELECT s.Divisao, s.CATEGORIA_SUGERIDA, s.ANO_pgto, s.{seletor_metrica.value}, s.COD_MUNIC_IBGE, m.Tipologia_PNDR_3, m.sigla_uf AS UF, m.nome AS Municipio
             FROM sdr_agregado s
             LEFT JOIN municipios m ON s.COD_MUNIC_IBGE = m.COD_MUNIC_IBGE
             WHERE {where_clause}
@@ -639,11 +639,16 @@ def _(
             margins_name='Total Geral'
         )
 
+        val_col_mun = val_col
+        if val_col == "COD_MUNIC_IBGE":
+            df_filtrado_sdr['_COD_MUNIC_IBGE_VAL'] = df_filtrado_sdr['COD_MUNIC_IBGE']
+            val_col_mun = '_COD_MUNIC_IBGE_VAL'
+
         tabela_municipio = pd.pivot_table(
             data=df_filtrado_sdr,
-            index=['Municipio'],
+            index=['COD_MUNIC_IBGE', 'Municipio', 'UF'],
             columns=[col_ano],
-            values=val_col,
+            values=val_col_mun,
             aggfunc=aggfunc,
             fill_value=0,
             margins=True,
@@ -737,7 +742,15 @@ def _(
         )
 
         df_municipio_ui = tabela_municipio.reset_index()
-        format_map = {col: formatador for col in df_municipio_ui.columns if col != 'Municipio'}
+        format_map = {col: formatador for col in df_municipio_ui.columns if col not in ['COD_MUNIC_IBGE', 'Municipio', 'UF']}
+        
+        def clean_ibge(x):
+            if pd.isna(x) or x == '': return ''
+            if x == 'Total Geral': return x
+            try: return str(int(float(x)))
+            except: return str(x)
+            
+        df_municipio_ui['COD_MUNIC_IBGE'] = df_municipio_ui['COD_MUNIC_IBGE'].apply(clean_ibge)
         tabela_municipio_ui = mo.ui.table(df_municipio_ui, pagination=True, selection=None, format_mapping=format_map)
 
         nomes_metricas = {
