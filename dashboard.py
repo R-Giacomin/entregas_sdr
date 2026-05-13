@@ -13,7 +13,7 @@ async def _():
     # Em ambiente de Navegador (WASM), precisamos puxar os pacotes explicitamente ANTES do Pandas
     if sys.platform == "emscripten":
         import micropip
-        await micropip.install(["Jinja2", "pandas", "openpyxl"])
+        await micropip.install(["Jinja2", "pandas", "openpyxl", "plotly", "folium", "branca", "mapclassify"])
         import pyodide.http
         base_url = "https://r-giacomin.github.io/entregas_sdr/"
 
@@ -30,8 +30,18 @@ async def _():
         with open("a_executar.parquet", "wb") as _f:
             _f.write(await res3.bytes())
 
+        import os
+        os.makedirs("assets", exist_ok=True)
+        res4 = await pyodide.http.pyfetch(base_url + "assets/municipios_br_simpl.geojson")
+        with open("assets/municipios_br_simpl.geojson", "wb") as _f:
+            _f.write(await res4.bytes())
+
     import pandas as pd
     import jinja2
+    import plotly.express as px
+    import folium
+    import json
+    import mapclassify
 
     # 1. Conexão e View
     con = duckdb.connect()
@@ -61,11 +71,35 @@ async def _():
     # 3. Busca valores únicos para os novos filtros de situação
     situacoes_convenio = sorted(con.execute("SELECT DISTINCT SIT_CONVENIO FROM sdr_agregado WHERE SIT_CONVENIO IS NOT NULL").df()["SIT_CONVENIO"].tolist())
     instrumentos_ativos = sorted(con.execute("SELECT DISTINCT INSTRUMENTO_ATIVO FROM sdr_agregado WHERE INSTRUMENTO_ATIVO IS NOT NULL").df()["INSTRUMENTO_ATIVO"].tolist())
-    return ano_max, ano_min, con, instrumentos_ativos, mo, opcoes_rotas, pd, rotas, situacoes_convenio, tipologias
+    return (
+        ano_max,
+        ano_min,
+        con,
+        folium,
+        instrumentos_ativos,
+        json,
+        mapclassify,
+        mo,
+        opcoes_rotas,
+        pd,
+        px,
+        rotas,
+        situacoes_convenio,
+        tipologias,
+    )
 
 
 @app.cell
-def _(ano_max, ano_min, con, mo, opcoes_rotas, rotas, situacoes_convenio, tipologias):
+def _(
+    ano_max,
+    ano_min,
+    con,
+    mo,
+    opcoes_rotas,
+    rotas,
+    situacoes_convenio,
+    tipologias,
+):
     slicer_anos = mo.ui.range_slider(
         start=ano_min,
         stop=ano_max,
@@ -76,6 +110,7 @@ def _(ano_max, ano_min, con, mo, opcoes_rotas, rotas, situacoes_convenio, tipolo
         options={
             "Valor Executado": "VALOR_AGREGADO",
             "Valor a executar": "VALOR_A_EXECUTAR",
+            "Execução per capita": "execucao_per_capita",
             "Quantidade": "QTD_AGREGADA",
             "KMs Estimados": "KM_estimado",
             "População Beneficiária": "populacao",
@@ -416,7 +451,14 @@ def _(
 
 
 @app.cell
-def _(filtro_flags, filtro_instrumento, filtro_sit_convenio, filtro_tipologia, filtros_rotas, mo):
+def _(
+    filtro_flags,
+    filtro_instrumento,
+    filtro_sit_convenio,
+    filtro_tipologia,
+    filtros_rotas,
+    mo,
+):
     titulos_flags = {
         "amazonia_legal": "SUDAM", "SUDECO": "SUDECO",
         "SUDENE": "SUDENE", "semiarido": "Semiárido",
@@ -467,8 +509,12 @@ def _(
     filtro_tipologia,
     filtro_uf,
     filtros_rotas,
+    folium,
+    json,
+    mapclassify,
     mo,
     pd,
+    px,
     seletor_metrica,
     slicer_anos,
 ):
@@ -554,6 +600,15 @@ def _(
         """
         df_filtrado_sdr = con.execute(query_sdr).df()
 
+    elif seletor_metrica.value == "execucao_per_capita":
+        query_sdr = f"""
+            SELECT s.ANO_pgto, s.VALOR_AGREGADO, s.COD_MUNIC_IBGE, m."População 2022" AS populacao, m.Tipologia_PNDR_3, m.sigla_uf AS UF, m.nome_regiao, m.nome AS Municipio
+            FROM sdr_agregado s
+            LEFT JOIN municipios m ON s.COD_MUNIC_IBGE = m.COD_MUNIC_IBGE
+            WHERE {where_clause}
+        """
+        df_filtrado_sdr = con.execute(query_sdr).df()
+
     else:
         query_sdr = f"""
             SELECT s.Divisao, s.CATEGORIA_SUGERIDA, s.ANO_pgto, s.{seletor_metrica.value}, s.COD_MUNIC_IBGE, m.Tipologia_PNDR_3, m.sigla_uf AS UF, m.nome AS Municipio
@@ -565,6 +620,157 @@ def _(
 
     if df_filtrado_sdr.empty:
         dash_content = mo.md("⚠️ Nenhum dado encontrado para os filtros selecionados.")
+    elif seletor_metrica.value == "execucao_per_capita":
+        import io
+        from datetime import datetime
+
+        try:
+            val_carga_raw = con.execute("SELECT data_carga FROM sdr_agregado LIMIT 1").fetchone()[0]
+            if val_carga_raw:
+                val_str = str(val_carga_raw).strip()
+                data_limpa = val_str
+                if len(val_str) >= 10 and "-" in val_str:
+                    try:
+                        data_limpa = datetime.strptime(val_str, "%Y-%m-%d %H:%M:%S").strftime("%d/%m/%Y")
+                    except ValueError:
+                        try:
+                            data_limpa = datetime.strptime(val_str, "%Y-%m-%d").strftime("%d/%m/%Y")
+                        except ValueError:
+                            pass
+
+                texto_data_carga = f"Data de carga dos dados: {data_limpa}"
+                texto_fonte = "Fonte dos dados: Transferegov.br (Convênios, Contratos de Repasse e Termos de Fomento)"
+
+                alerta_carga = mo.Html(
+                    f"<div class='govbr-alert'>"
+                    f"<div><i class='far fa-calendar-alt'></i> <strong>{texto_data_carga}</strong></div>"
+                    f"<div style='margin-top: 5px;'><i class='fas fa-database'></i> <strong>{texto_fonte}</strong></div>"
+                    f"</div>"
+                )
+            else:
+                alerta_carga = mo.md("")
+        except Exception as e:
+            alerta_carga = mo.md(f"*(Aviso: Não foi possível carregar a data de carga - {str(e)})*")
+
+        # Calculo do indicador
+        df_mun = df_filtrado_sdr.groupby(['COD_MUNIC_IBGE', 'Municipio', 'UF', 'populacao', 'nome_regiao'])['VALOR_AGREGADO'].sum().reset_index()
+        df_mun['execucao_per_capita'] = df_mun.apply(lambda row: row['VALOR_AGREGADO'] / row['populacao'] if row['populacao'] > 0 else 0, axis=1)
+
+        with open("assets/municipios_br_simpl.geojson", 'r') as f:
+            geojson_data = json.load(f)
+
+        for feature in geojson_data['features']:
+            if 'codarea' in feature['properties']:
+                codarea_original = feature['properties']['codarea']
+                feature['properties']['codarea'] = codarea_original[:-1] if codarea_original else ""
+
+        map_data = df_mun[['COD_MUNIC_IBGE', 'execucao_per_capita', 'Municipio', 'UF']].copy()
+        map_data['COD_MUNIC_IBGE'] = map_data['COD_MUNIC_IBGE'].astype(str).apply(lambda x: x[:6].zfill(6))
+
+        if map_data.empty:
+            fig_map = mo.md("Sem dados para exibir no mapa.")
+        else:
+            _m = folium.Map(location=[-14.2350, -51.9253], zoom_start=4.2, tiles="cartodbpositron", width='100%', height='600px', control_scale=True)
+            _m.fit_bounds([[-33.75, -73.98], [5.27, -34.79]])
+
+            # Cálculo de Quebra Natural Jenks
+            vals = map_data['execucao_per_capita'].dropna()
+            if not vals.empty and vals.nunique() > 5:
+                try:
+                    classifier = mapclassify.NaturalBreaks(vals, k=5)
+                    # NaturalBreaks.bins retorna os limites superiores das classes.
+                    # O Folium espera uma lista incluindo o valor mínimo [min, b1, b2, b3, b4, b5].
+                    bins_jenks = [vals.min()] + classifier.bins.tolist()
+                    # Remover duplicatas (caso ocorram em distribuições muito concentradas) e ordenar
+                    bins_jenks = sorted(list(set(bins_jenks)))
+                except:
+                    bins_jenks = 5
+            else:
+                bins_jenks = 5
+
+            choropleth = folium.Choropleth(
+                geo_data=geojson_data,
+                data=map_data,
+                columns=["COD_MUNIC_IBGE", "execucao_per_capita"],
+                key_on="feature.properties.codarea",
+                fill_color="PuBuGn",
+                fill_opacity=0.9,
+                line_opacity=0.01,
+                legend_name="Execução per capita (R$)",
+                bins=bins_jenks,
+                highlight=True,
+                reset=True,
+                smooth_factor=0.5,
+                nan_fill_color="white",
+                nan_fill_opacity=1.0
+            ).add_to(_m)
+
+            nome_dict = dict(zip(map_data['COD_MUNIC_IBGE'], map_data['Municipio']))
+            val_dict = dict(zip(map_data['COD_MUNIC_IBGE'], map_data['execucao_per_capita']))
+
+            for feature in choropleth.geojson.data['features']:
+                codarea = feature['properties'].get('codarea', '')
+                if codarea in nome_dict:
+                    feature['properties']['nome_mun'] = nome_dict[codarea]
+                    valor = val_dict[codarea]
+                    feature['properties']['val_str'] = f"R$ {valor:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+                else:
+                    feature['properties']['nome_mun'] = 'Sem dado'
+                    feature['properties']['val_str'] = 'N/A'
+
+            folium.GeoJsonTooltip(
+                fields=['nome_mun', 'codarea', 'val_str'],
+                aliases=['Município: ', 'Código IBGE: ', 'Per capita: '],
+                style=("background-color: white; color: #333333; font-family: arial; font-size: 12px; padding: 10px; border: 1px solid grey; border-radius: 5px;")
+            ).add_to(choropleth.geojson)
+
+            fix_size_js = "<script>setTimeout(function() { var mapDiv = document.querySelector('.folium-map'); if (mapDiv) { mapDiv.style.width = '100%'; mapDiv.style.height = '600px'; var mapObj = window[mapDiv.id]; if (mapObj) { mapObj.invalidateSize(); mapObj.setView([-14.2350, -51.9253], 4.2); } } }, 200);</script>"
+            _m.get_root().html.add_child(folium.Element(fix_size_js))
+
+            fig_map = mo.Html(f'<div style="width: 100%; height: 600px; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.06);">{_m._repr_html_()}</div>')
+
+        # Top 10 Municipios
+        top10 = df_mun.nlargest(10, 'execucao_per_capita').sort_values('execucao_per_capita', ascending=True)
+        top10['mun_uf'] = top10['Municipio'] + ' - ' + top10['UF']
+        fig_rank = px.bar(top10, y='mun_uf', x='execucao_per_capita', orientation='h', color='execucao_per_capita', color_continuous_scale='PuBuGn', labels={'execucao_per_capita': 'Execução per capita (R$)', 'mun_uf': ''}, title='Top 10 Municípios por Execução per capita')
+        fig_rank.update_traces(textfont_size=10, textangle=0, cliponaxis=False)
+        fig_rank.update_layout(template='plotly_white', height=500, margin=dict(t=50, b=20), showlegend=False, coloraxis_showscale=False, yaxis=dict(categoryorder='total ascending'))
+
+        # Region Chart
+        df_mun_distinct = df_filtrado_sdr[['COD_MUNIC_IBGE', 'nome_regiao', 'UF', 'populacao']].drop_duplicates(subset=['COD_MUNIC_IBGE'])
+        pop_regiao = df_mun_distinct.groupby('nome_regiao')['populacao'].sum().reset_index()
+        val_regiao = df_filtrado_sdr.groupby('nome_regiao')['VALOR_AGREGADO'].sum().reset_index()
+        df_regiao = pd.merge(val_regiao, pop_regiao, on='nome_regiao')
+        df_regiao['execucao_per_capita'] = df_regiao.apply(lambda row: row['VALOR_AGREGADO'] / row['populacao'] if row['populacao'] > 0 else 0, axis=1)
+        df_regiao = df_regiao.sort_values('execucao_per_capita', ascending=False)
+        fig_regiao = px.bar(df_regiao, x='nome_regiao', y='execucao_per_capita', color='execucao_per_capita', color_continuous_scale='PuBuGn', labels={'execucao_per_capita': 'Execução per capita (R$)', 'nome_regiao': 'Região'}, title='Execução per capita por Região')
+        fig_regiao.update_layout(template='plotly_white', height=400, margin=dict(t=50, b=20), showlegend=False, coloraxis_showscale=False)
+
+        # State Chart
+        pop_uf = df_mun_distinct.groupby('UF')['populacao'].sum().reset_index()
+        val_uf = df_filtrado_sdr.groupby('UF')['VALOR_AGREGADO'].sum().reset_index()
+        df_uf = pd.merge(val_uf, pop_uf, on='UF')
+        df_uf['execucao_per_capita'] = df_uf.apply(lambda row: row['VALOR_AGREGADO'] / row['populacao'] if row['populacao'] > 0 else 0, axis=1)
+        df_uf = df_uf.sort_values('execucao_per_capita', ascending=False)
+        fig_uf = px.bar(df_uf, x='UF', y='execucao_per_capita', color='execucao_per_capita', color_continuous_scale='PuBuGn', labels={'execucao_per_capita': 'Execução per capita (R$)', 'UF': 'Estado'}, title='Execução per capita por Estado')
+        fig_uf.update_layout(template='plotly_white', height=400, margin=dict(t=50, b=20), showlegend=False, coloraxis_showscale=False)
+
+        dash_content = mo.vstack([
+            alerta_carga,
+            mo.Html('<div class="govbr-sidebar-title" style="margin-top: 20px;"><i class="fas fa-map-marked-alt"></i> Mapa Municipal</div>'),
+            fig_map,
+            mo.Html('<div style="height: 30px;"></div>'),
+            mo.Html('<div class="govbr-sidebar-title"><i class="fas fa-chart-bar"></i> Análise Comparativa</div>'),
+            mo.hstack(
+                [
+                    mo.Html(f"<div style='flex: 1 1 100%; min-width: 300px; max-width: 100vw;'>{mo.as_html(fig_rank).text}</div>"), 
+                    mo.Html(f"<div style='flex: 1 1 100%; min-width: 300px; max-width: 100vw;'>{mo.as_html(mo.vstack([fig_regiao, mo.Html('<div style=\"height: 20px;\"></div>'), fig_uf])).text}</div>")
+                ],
+                wrap=True,
+                justify="center"
+            )
+        ])
+
     else:
 
         def gerar_excel(df: pd.DataFrame) -> bytes:
@@ -743,13 +949,13 @@ def _(
 
         df_municipio_ui = tabela_municipio.reset_index()
         format_map = {col: formatador for col in df_municipio_ui.columns if col not in ['COD_MUNIC_IBGE', 'Municipio', 'UF']}
-        
+
         def clean_ibge(x):
             if pd.isna(x) or x == '': return ''
             if x == 'Total Geral': return x
             try: return str(int(float(x)))
             except: return str(x)
-            
+
         df_municipio_ui['COD_MUNIC_IBGE'] = df_municipio_ui['COD_MUNIC_IBGE'].apply(clean_ibge)
         tabela_municipio_ui = mo.ui.table(df_municipio_ui, pagination=True, selection=None, format_mapping=format_map)
 
@@ -969,19 +1175,19 @@ def _(
                     mo.download(data=lambda: gerar_excel(tabela_divisao), filename="resumo_divisao.xlsx", label="💾 Baixar XLSX")
                 ], justify="space-between", align="center"),
                 mo.Html(f"<div class='govbr-table-container' style='width: 100%; max-width: 100%; overflow-x: auto; margin-bottom: 2rem;'>{estilo_tabela_divisao.to_html()}</div>"),
-    
+
                 mo.hstack([
                     mo.md(f"### Detalhamento por Categoria"),
                     mo.download(data=lambda: gerar_excel(tabela_dinamica), filename="detalhe_categoria.xlsx", label="💾 Baixar XLSX")
                 ], justify="space-between", align="center"),
                 mo.Html(f"<div class='govbr-table-container' style='width: 100%; max-width: 100%; overflow-x: auto; margin-bottom: 2rem;'>{estilo_tabela.to_html()}</div>"),
-    
+
                 mo.hstack([
                     mo.md(f"### Resumo por Tipologia PNDR 3"),
                     mo.download(data=lambda: gerar_excel(tabela_tipologia), filename="resumo_tipologia.xlsx", label="💾 Baixar XLSX")
                 ], justify="space-between", align="center"),
                 mo.Html(f"<div class='govbr-table-container' style='width: 100%; max-width: 100%; overflow-x: auto; margin-bottom: 2rem;'>{estilo_tabela_tipologia.to_html()}</div>"),
-    
+
                 mo.hstack([
                     mo.md(f"### Resumo por Município"),
                     mo.download(data=lambda: gerar_excel(tabela_municipio), filename="resumo_municipio.xlsx", label="💾 Baixar XLSX")
@@ -990,7 +1196,7 @@ def _(
                 mo.Html("<div style='height: 2rem;'></div>"),
 
                 nota_dinamica,
-    
+
                 relatorio_metodologico_html
             ])
 
