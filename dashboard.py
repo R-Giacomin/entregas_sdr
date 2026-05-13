@@ -1,3 +1,4 @@
+# marimo: requirements=["pandas", "duckdb", "openpyxl", "plotly", "folium", "branca", "mapclassify"]
 import marimo
 
 __generated_with = "0.23.1"
