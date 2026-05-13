@@ -1,4 +1,4 @@
-# marimo: requirements=["pandas", "duckdb", "openpyxl", "plotly", "folium", "branca", "mapclassify"]
+# marimo: requirements=["pandas", "duckdb", "openpyxl", "plotly", "folium"]
 import marimo
 
 __generated_with = "0.23.1"
@@ -14,7 +14,7 @@ async def _():
     # Em ambiente de Navegador (WASM), precisamos puxar os pacotes explicitamente ANTES do Pandas
     if sys.platform == "emscripten":
         import micropip
-        await micropip.install(["Jinja2", "pandas", "openpyxl", "plotly", "folium", "branca", "mapclassify"])
+        await micropip.install(["Jinja2", "pandas", "openpyxl", "plotly", "folium"])
         import pyodide.http
         base_url = "https://r-giacomin.github.io/entregas_sdr/"
 
@@ -42,7 +42,6 @@ async def _():
     import plotly.express as px
     import folium
     import json
-    import mapclassify
 
     # 1. Conexão e View
     con = duckdb.connect()
@@ -79,7 +78,7 @@ async def _():
         folium,
         instrumentos_ativos,
         json,
-        mapclassify,
+
         mo,
         opcoes_rotas,
         pd,
@@ -512,7 +511,7 @@ def _(
     filtros_rotas,
     folium,
     json,
-    mapclassify,
+
     mo,
     pd,
     px,
@@ -674,17 +673,49 @@ def _(
             _m = folium.Map(location=[-14.2350, -51.9253], zoom_start=4.2, tiles="cartodbpositron", width='100%', height='600px', control_scale=True)
             _m.fit_bounds([[-33.75, -73.98], [5.27, -34.79]])
 
-            # Cálculo de Quebra Natural Jenks
+            # Cálculo de Quebra Natural Jenks (implementação pura, sem mapclassify)
+            def _jenks_breaks(data, k=5):
+                """Fisher-Jenks Natural Breaks em Python puro."""
+                data = sorted(data)
+                n = len(data)
+                if n <= k:
+                    return data
+                # Matrizes de programação dinâmica
+                lc = [[0] * (k + 1) for _ in range(n + 1)]
+                vc = [[float('inf')] * (k + 1) for _ in range(n + 1)]
+                for i in range(1, k + 1):
+                    lc[1][i] = 1
+                    vc[1][i] = 0.0
+                for l in range(2, n + 1):
+                    s1 = s2 = 0.0
+                    for m in range(l, 0, -1):
+                        val = data[m - 1]
+                        s1 += val
+                        s2 += val * val
+                        w = l - m + 1
+                        variance = s2 - (s1 * s1) / w
+                        if m > 1:
+                            for j in range(2, k + 1):
+                                new_val = variance + vc[m - 1][j - 1]
+                                if new_val < vc[l][j]:
+                                    lc[l][j] = m
+                                    vc[l][j] = new_val
+                    lc[l][1] = 1
+                    vc[l][1] = variance
+                # Recuperar as quebras
+                breaks = [data[-1]]
+                kk = n
+                for j in range(k, 1, -1):
+                    kk = lc[kk][j] - 1
+                    breaks.insert(0, data[kk])
+                breaks.insert(0, data[0])
+                return sorted(set(breaks))
+
             vals = map_data['execucao_per_capita'].dropna()
             if not vals.empty and vals.nunique() > 5:
                 try:
-                    classifier = mapclassify.NaturalBreaks(vals, k=5)
-                    # NaturalBreaks.bins retorna os limites superiores das classes.
-                    # O Folium espera uma lista incluindo o valor mínimo [min, b1, b2, b3, b4, b5].
-                    bins_jenks = [vals.min()] + classifier.bins.tolist()
-                    # Remover duplicatas (caso ocorram em distribuições muito concentradas) e ordenar
-                    bins_jenks = sorted(list(set(bins_jenks)))
-                except:
+                    bins_jenks = _jenks_breaks(vals.tolist(), k=5)
+                except Exception:
                     bins_jenks = 5
             else:
                 bins_jenks = 5
