@@ -71,21 +71,62 @@ async def _():
     # 3. Busca valores únicos para os novos filtros de situação
     situacoes_convenio = sorted(con.execute("SELECT DISTINCT SIT_CONVENIO FROM sdr_agregado WHERE SIT_CONVENIO IS NOT NULL").df()["SIT_CONVENIO"].tolist())
     instrumentos_ativos = sorted(con.execute("SELECT DISTINCT INSTRUMENTO_ATIVO FROM sdr_agregado WHERE INSTRUMENTO_ATIVO IS NOT NULL").df()["INSTRUMENTO_ATIVO"].tolist())
+
+    # 4. Busca valores únicos para os filtros de Programa e Ação
+    programas_raw = sorted(con.execute("SELECT DISTINCT PROGRAMA FROM sdr_agregado WHERE PROGRAMA IS NOT NULL AND PROGRAMA != ''").df()["PROGRAMA"].tolist())
+    acoes_df = con.execute("SELECT DISTINCT PROGRAMA, ACAO FROM sdr_agregado WHERE ACAO IS NOT NULL AND ACAO != ''").df()
+
+    # Mapeamento de nomes das ações orçamentárias
+    nomes_acoes = {
+        "7W59": "Implantação do Projeto Sul-Fronteira",
+        "00SX": "Apoio a Projetos de Desenvolvimento Sustentável Local Integrado",
+        "10T2": "Apoio a Projetos e Obras de Reabilitação, de Acessibilidade e Modernização Tecnológica em Áreas Urbanas",
+        "20NK": "Estruturação e Dinamização de Arranjos Produtivos Locais em Espaços Sub-regionais",
+        "20WQ": "Gestão de Políticas de Desenvolvimento Regional e Ordenamento Territorial",
+        "214S": "Estruturação e Dinamização de Atividades Produtivas - Rotas de Integração Nacional",
+        "1211": "Implementação de Infraestrutura Básica — Calha Norte",
+        "1851": "Aquisição de Equipamentos e/ou Implantação de Obras de Infraestrutura Hídrica",
+        "7K66": "Apoio a Projetos de Desenvolvimento Sustentável Local Integrado",
+        "12QC": "Implantação de Obras e Equipamentos para Oferta de Água — Plano Brasil sem Miséria",
+        "0021": "Recuperação e Preservação de Bacias Hidrográficas",
+        "0035": "Recuperação e Preservação de Bacias Hidrográficas",
+        "217V": "Apoio a Projetos de Ampliação do Acesso à Água por Meio de Tecnologias Sustentáveis",
+        "6553": "Apoio a Implantação de Infraestrutura Complementar, Social e Produtiva na Faixa de Fronteira",
+        "3147": "Recuperação e Preservação de Bacias Hidrográficas",
+        "00VA": "Apoio a Projetos de Desenvolvimento Sustentável Local Integrado",
+    }
+
+    def formatar_acao(codigo):
+        nome = nomes_acoes.get(codigo)
+        return f"{codigo} — {nome}" if nome else codigo
+
+    acoes_por_programa = acoes_df.groupby("PROGRAMA")["ACAO"].apply(
+        lambda s: sorted([formatar_acao(a) for a in s])
+    ).to_dict()
+    todas_acoes = sorted([formatar_acao(a) for a in acoes_df["ACAO"].unique().tolist()])
+
+    # Mapeia label formatado de volta ao código original para uso nos filtros WHERE
+    label_para_codigo_acao = {formatar_acao(a): a for a in acoes_df["ACAO"].unique().tolist()}
+
+    programas = programas_raw
     return (
         ano_max,
         ano_min,
+        acoes_por_programa,
         con,
         folium,
         instrumentos_ativos,
         json,
-
+        label_para_codigo_acao,
         mo,
         opcoes_rotas,
         pd,
+        programas,
         px,
         rotas,
         situacoes_convenio,
         tipologias,
+        todas_acoes,
     )
 
 
@@ -93,12 +134,15 @@ async def _():
 def _(
     ano_max,
     ano_min,
+    acoes_por_programa,
     con,
     mo,
     opcoes_rotas,
+    programas,
     rotas,
     situacoes_convenio,
     tipologias,
+    todas_acoes,
 ):
     slicer_anos = mo.ui.range_slider(
         start=ano_min,
@@ -142,15 +186,38 @@ def _(
         options=situacoes_convenio,
         value=situacoes_convenio  # seleciona tudo por padrão
     )
+
+    filtro_programa = mo.ui.multiselect(
+        options=programas,
+    )
     return (
+        acoes_por_programa,
         filtro_flags,
+        filtro_programa,
         filtro_regiao,
         filtro_sit_convenio,
         filtro_tipologia,
         filtros_rotas,
         seletor_metrica,
         slicer_anos,
+        todas_acoes,
     )
+
+
+@app.cell
+def _(acoes_por_programa, filtro_programa, label_para_codigo_acao, mo, todas_acoes):
+    # Ações disponíveis dependem dos programas selecionados (hierarquia)
+    if filtro_programa.value:
+        _acoes_disponiveis = sorted(set(
+            acao
+            for prog in filtro_programa.value
+            for acao in acoes_por_programa.get(prog, [])
+        ))
+    else:
+        _acoes_disponiveis = todas_acoes
+
+    filtro_acao = mo.ui.multiselect(options=_acoes_disponiveis)
+    return (filtro_acao, label_para_codigo_acao,)
 
 
 @app.cell
@@ -200,7 +267,9 @@ def _(con, filtro_regiao, filtro_uf, mo):
 
 @app.cell
 def _(
+    filtro_acao,
     filtro_municipio,
+    filtro_programa,
     filtro_regiao,
     filtro_uf,
     mo,
@@ -211,7 +280,9 @@ def _(
         [
             mo.vstack([mo.md("**Região**"), filtro_regiao], align="start"),
             mo.vstack([mo.md("**Estado**"), filtro_uf], align="start"),
-            mo.vstack([mo.md("**Município**"), filtro_municipio], align="start")
+            mo.vstack([mo.md("**Município**"), filtro_municipio], align="start"),
+            mo.vstack([mo.md("**Programa**"), filtro_programa], align="start"),
+            mo.vstack([mo.md("**Ação**"), filtro_acao], align="start"),
         ], justify="start", align="start"
     )
 
@@ -501,9 +572,11 @@ def _(
 @app.cell
 def _(
     con,
+    filtro_acao,
     filtro_flags,
     filtro_instrumento,
     filtro_municipio,
+    filtro_programa,
     filtro_regiao,
     filtro_sit_convenio,
     filtro_tipologia,
@@ -511,7 +584,7 @@ def _(
     filtros_rotas,
     folium,
     json,
-
+    label_para_codigo_acao,
     mo,
     pd,
     px,
@@ -559,6 +632,15 @@ def _(
     for r, val in filtros_rotas.value.items():
         if val:
             condicoes.append(f"m.{r} IN {format_in(val)}")
+
+    # Filtros de Programa e Ação — aplicados apenas quando a tabela é sdr_agregado
+    if seletor_metrica.value != "VALOR_A_EXECUTAR":
+        if filtro_programa.value:
+            condicoes.append(f"s.PROGRAMA IN {format_in(filtro_programa.value)}")
+        if filtro_acao.value:
+            # Converte labels formatados ("1211 — Calha Norte") de volta para códigos ("1211")
+            codigos_acao = [label_para_codigo_acao.get(label, label) for label in filtro_acao.value]
+            condicoes.append(f"s.ACAO IN {format_in(codigos_acao)}")
 
     where_clause = " AND ".join(condicoes)
 
