@@ -633,21 +633,21 @@ def _(
         if val:
             condicoes.append(f"m.{r} IN {format_in(val)}")
 
-    # Filtros de Programa e Ação — aplicados apenas quando a tabela é sdr_agregado
-    if seletor_metrica.value != "VALOR_A_EXECUTAR":
-        if filtro_programa.value:
-            condicoes.append(f"s.PROGRAMA IN {format_in(filtro_programa.value)}")
-        if filtro_acao.value:
-            # Converte labels formatados ("1211 — Calha Norte") de volta para códigos ("1211")
-            codigos_acao = [label_para_codigo_acao.get(label, label) for label in filtro_acao.value]
-            condicoes.append(f"s.ACAO IN {format_in(codigos_acao)}")
+    # Filtros de Programa e Ação — aplicados para todas as métricas
+    if filtro_programa.value:
+        condicoes.append(f"s.PROGRAMA IN {format_in(filtro_programa.value)}")
+    if filtro_acao.value:
+        # Converte labels formatados ("1211 — Calha Norte") de volta para códigos ("1211")
+        codigos_acao = [label_para_codigo_acao.get(label, label) for label in filtro_acao.value]
+        condicoes.append(f"s.ACAO IN {format_in(codigos_acao)}")
 
     where_clause = " AND ".join(condicoes)
 
     if seletor_metrica.value == "VALOR_A_EXECUTAR":
         query_sdr = f"""
             SELECT s.ANO_Convenio AS "ANO Convenio", s.VALOR_A_EXECUTAR, m.Tipologia_PNDR_3, m.nome_regiao, m.sigla_uf AS UF, m.nome AS Municipio,
-                   s.data_carga, s.NR_CONVENIO, s.SIT_CONVENIO, s.COD_MUNIC_IBGE, s.MUNIC_PROPONENTE, s.UF_PROPONENTE, s.MAX_VL_GLOBAL_CONV, s.SOMA_VALOR_AGREGADO, s.PERC_EXECUCAO
+                   s.data_carga, s.NR_CONVENIO, s.SIT_CONVENIO, s.COD_MUNIC_IBGE, s.MUNIC_PROPONENTE, s.UF_PROPONENTE, s.MAX_VL_GLOBAL_CONV, s.SOMA_VALOR_AGREGADO, s.PERC_EXECUCAO,
+                   s.PROGRAMA, s.ACAO
             FROM a_executar s
             LEFT JOIN municipios m ON s.COD_MUNIC_IBGE = m.COD_MUNIC_IBGE
             WHERE {where_clause}
