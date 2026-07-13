@@ -71,6 +71,20 @@ async def _():
     # 3. Busca valores únicos para os novos filtros de situação
     situacoes_convenio = sorted(con.execute("SELECT DISTINCT SIT_CONVENIO FROM sdr_agregado WHERE SIT_CONVENIO IS NOT NULL").df()["SIT_CONVENIO"].tolist())
     instrumentos_ativos = sorted(con.execute("SELECT DISTINCT INSTRUMENTO_ATIVO FROM sdr_agregado WHERE INSTRUMENTO_ATIVO IS NOT NULL").df()["INSTRUMENTO_ATIVO"].tolist())
+    origens_recurso = sorted(con.execute("SELECT DISTINCT ORIGEM_RECURSO FROM sdr_agregado WHERE ORIGEM_RECURSO IS NOT NULL").df()["ORIGEM_RECURSO"].tolist())
+
+    # Mapeamento de labels para os códigos RP
+    labels_origem = {
+        'RP2': 'RP2 — Discricionário',
+        'RP6': 'RP6 — Emenda Individual',
+        'RP7': 'RP7 — Emenda de Bancada',
+        'RP8': 'RP8 — Emenda de Comissão',
+        'RP9': 'RP9 — Emenda de Relator',
+        'RP2 / RP9': 'RP2/RP9 — Misto',
+        'Discricionário / Não identificado': 'Discricionário / Não identificado',
+    }
+    origens_recurso_labels = {labels_origem.get(o, o): o for o in origens_recurso}
+
 
     # 4. Busca valores únicos para os filtros de Programa e Ação
     programas_raw = sorted(con.execute("SELECT DISTINCT PROGRAMA FROM sdr_agregado WHERE PROGRAMA IS NOT NULL AND PROGRAMA != ''").df()["PROGRAMA"].tolist())
@@ -120,6 +134,8 @@ async def _():
         label_para_codigo_acao,
         mo,
         opcoes_rotas,
+        origens_recurso,
+        origens_recurso_labels,
         pd,
         programas,
         px,
@@ -138,6 +154,8 @@ def _(
     con,
     mo,
     opcoes_rotas,
+    origens_recurso,
+    origens_recurso_labels,
     programas,
     rotas,
     situacoes_convenio,
@@ -190,9 +208,14 @@ def _(
     filtro_programa = mo.ui.multiselect(
         options=programas,
     )
+
+    filtro_origem_recurso = mo.ui.multiselect(
+        options=origens_recurso_labels,
+    )
     return (
         acoes_por_programa,
         filtro_flags,
+        filtro_origem_recurso,
         filtro_programa,
         filtro_regiao,
         filtro_sit_convenio,
@@ -525,6 +548,7 @@ def _(
 def _(
     filtro_flags,
     filtro_instrumento,
+    filtro_origem_recurso,
     filtro_sit_convenio,
     filtro_tipologia,
     filtros_rotas,
@@ -554,6 +578,9 @@ def _(
         mo.Html("<div class='govbr-sidebar-title'><i class='fas fa-handshake'></i> INSTRUMENTO</div>"),
         mo.hstack([mo.md("**Instrumento Ativo**"), filtro_instrumento], justify="space-between", align="center"),
         mo.Html("<div style='height: 20px;'></div>"),
+        mo.Html("<div class='govbr-sidebar-title'><i class='fas fa-coins'></i> ORIGEM DOS RECURSOS</div>"),
+        mo.hstack([mo.md("**Origem**"), filtro_origem_recurso], justify="space-between", align="center"),
+        mo.Html("<div style='height: 20px;'></div>"),
         mo.Html("<div class='govbr-sidebar-title'><i class='fas fa-globe'></i> ABRANGÊNCIA</div>"),
         *_flags_layout,
         mo.Html("<div style='height: 20px;'></div>"),
@@ -576,6 +603,7 @@ def _(
     filtro_flags,
     filtro_instrumento,
     filtro_municipio,
+    filtro_origem_recurso,
     filtro_programa,
     filtro_regiao,
     filtro_sit_convenio,
@@ -610,6 +638,11 @@ def _(
     # Filtro de Instrumento Ativo
     if filtro_instrumento.value and seletor_metrica.value != "VALOR_A_EXECUTAR":
         condicoes.append(f"s.INSTRUMENTO_ATIVO IN {format_in(filtro_instrumento.value)}")
+
+    # Filtro de Origem de Recurso
+    if filtro_origem_recurso.value:
+        # filtro_origem_recurso.value retorna os valores (códigos originais) do dicionário
+        condicoes.append(f"s.ORIGEM_RECURSO IN {format_in(filtro_origem_recurso.value)}")
 
     if filtro_municipio.value:
         condicoes.append(f"m.nome IN {format_in(filtro_municipio.value)}")
@@ -1314,14 +1347,78 @@ def _(
                 relatorio_metodologico_html
             ])
 
-    scrollable_container = mo.Html(f"""
-    <div style="height: calc(100vh - 280px); overflow-y: auto; overflow-x: hidden; padding-right: 15px; padding-bottom: 150px;">
-        {dash_content.text}
-    </div>
+    css_impressao = mo.Html("""
+        <style>
+        @media print {
+            /* Oculta header, sidebar e botão */
+            .govbr-header,
+            aside,
+            [data-testid="sidebar"],
+            .sidebar,
+            .no-print {
+                display: none !important;
+            }
+
+            /* Remove margens e fundo */
+            body, html {
+                background-color: white !important;
+                margin: 0 !important;
+                padding: 0 !important;
+            }
+
+            /* Garante que o conteúdo ocupe a página toda */
+            main, marimo-app, marimo-island {
+                width: 100% !important;
+                margin: 0 !important;
+                padding: 0 !important;
+            }
+
+            /* Tabelas não quebram no meio da página */
+            table {
+                page-break-inside: avoid;
+            }
+
+            /* Cabeçalho de impressão com filtros aplicados */
+            .print-header {
+                display: block !important;
+                margin-bottom: 20px;
+                font-family: 'Rawline', sans-serif;
+                border-bottom: 2px solid #1351b4;
+                padding-bottom: 10px;
+            }
+        }
+
+        /* Oculto na tela, visível só na impressão */
+        .print-header {
+            display: none;
+        }
+        </style>
     """)
 
+    botao_imprimir = mo.Html("""
+        <div class="no-print" style="margin-top: 24px; margin-bottom: 8px;">
+            <button onclick="window.print()" style="
+                background-color: #1351b4;
+                color: white;
+                border: none;
+                padding: 10px 20px;
+                border-radius: 4px;
+                cursor: pointer;
+                font-family: 'Rawline', sans-serif;
+                font-size: 0.95rem;
+                display: flex;
+                align-items: center;
+                gap: 8px;
+            ">
+                🖨️ Imprimir / Salvar como PDF
+            </button>
+        </div>
+    """)
+
+    dash_content_final = mo.vstack([css_impressao, dash_content, botao_imprimir])
+
     # A última expressão do bloco é exibida na tela do dashboard.
-    scrollable_container
+    dash_content_final
     return
 
 
