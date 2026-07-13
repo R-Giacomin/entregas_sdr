@@ -1,4 +1,5 @@
 # marimo: requirements=["pandas", "duckdb", "openpyxl", "plotly", "folium"]
+
 import marimo
 
 __generated_with = "0.23.1"
@@ -124,9 +125,9 @@ async def _():
 
     programas = programas_raw
     return (
+        acoes_por_programa,
         ano_max,
         ano_min,
-        acoes_por_programa,
         con,
         folium,
         instrumentos_ativos,
@@ -134,13 +135,13 @@ async def _():
         label_para_codigo_acao,
         mo,
         opcoes_rotas,
-        origens_recurso,
         origens_recurso_labels,
         pd,
         programas,
         px,
         rotas,
         situacoes_convenio,
+        sys,
         tipologias,
         todas_acoes,
     )
@@ -150,17 +151,14 @@ async def _():
 def _(
     ano_max,
     ano_min,
-    acoes_por_programa,
     con,
     mo,
     opcoes_rotas,
-    origens_recurso,
     origens_recurso_labels,
     programas,
     rotas,
     situacoes_convenio,
     tipologias,
-    todas_acoes,
 ):
     slicer_anos = mo.ui.range_slider(
         start=ano_min,
@@ -213,7 +211,6 @@ def _(
         options=origens_recurso_labels,
     )
     return (
-        acoes_por_programa,
         filtro_flags,
         filtro_origem_recurso,
         filtro_programa,
@@ -223,12 +220,11 @@ def _(
         filtros_rotas,
         seletor_metrica,
         slicer_anos,
-        todas_acoes,
     )
 
 
 @app.cell
-def _(acoes_por_programa, filtro_programa, label_para_codigo_acao, mo, todas_acoes):
+def _(acoes_por_programa, filtro_programa, mo, todas_acoes):
     # Ações disponíveis dependem dos programas selecionados (hierarquia)
     if filtro_programa.value:
         _acoes_disponiveis = sorted(set(
@@ -240,7 +236,7 @@ def _(acoes_por_programa, filtro_programa, label_para_codigo_acao, mo, todas_aco
         _acoes_disponiveis = todas_acoes
 
     filtro_acao = mo.ui.multiselect(options=_acoes_disponiveis)
-    return (filtro_acao, label_para_codigo_acao,)
+    return (filtro_acao,)
 
 
 @app.cell
@@ -597,7 +593,38 @@ def _(
 
 
 @app.cell
+def _(mo):
+    # Estado que guarda o último clique do botão de impressão já processado,
+    # para não disparar window.print() de novo a cada reexecução reativa.
+    get_ultimo_clique_impressao, set_ultimo_clique_impressao = mo.state(0)
+    botao_imprimir = mo.ui.button(label="🖨️ Imprimir / Salvar como PDF", kind="neutral")
+    return (
+        botao_imprimir,
+        get_ultimo_clique_impressao,
+        set_ultimo_clique_impressao,
+    )
+
+
+@app.cell
 def _(
+    botao_imprimir,
+    get_ultimo_clique_impressao,
+    set_ultimo_clique_impressao,
+    sys,
+):
+    # mo.Html com onclick é sanitizado pelo marimo (DOMPurify remove atributos on*),
+    # então o clique precisa ser tratado aqui e o print disparado via Pyodide (só existe em WASM).
+    if botao_imprimir.value != get_ultimo_clique_impressao():
+        set_ultimo_clique_impressao(botao_imprimir.value)
+        if sys.platform == "emscripten":
+            from js import window
+            window.print()
+    return
+
+
+@app.cell
+def _(
+    botao_imprimir,
     con,
     filtro_acao,
     filtro_flags,
@@ -1395,27 +1422,11 @@ def _(
         </style>
     """)
 
-    botao_imprimir = mo.Html("""
-        <div class="no-print" style="margin-top: 24px; margin-bottom: 8px;">
-            <button onclick="window.print()" style="
-                background-color: #1351b4;
-                color: white;
-                border: none;
-                padding: 10px 20px;
-                border-radius: 4px;
-                cursor: pointer;
-                font-family: 'Rawline', sans-serif;
-                font-size: 0.95rem;
-                display: flex;
-                align-items: center;
-                gap: 8px;
-            ">
-                🖨️ Imprimir / Salvar como PDF
-            </button>
-        </div>
-    """)
+    botao_imprimir_html = mo.Html(
+        f"<div class='no-print' style='margin-top: 24px; margin-bottom: 8px;'>{mo.as_html(botao_imprimir).text}</div>"
+    )
 
-    dash_content_final = mo.vstack([css_impressao, dash_content, botao_imprimir])
+    dash_content_final = mo.vstack([css_impressao, dash_content, botao_imprimir_html])
 
     # A última expressão do bloco é exibida na tela do dashboard.
     dash_content_final
