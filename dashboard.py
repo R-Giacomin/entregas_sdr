@@ -141,7 +141,6 @@ async def _():
         px,
         rotas,
         situacoes_convenio,
-        sys,
         tipologias,
         todas_acoes,
     )
@@ -593,38 +592,7 @@ def _(
 
 
 @app.cell
-def _(mo):
-    # Estado que guarda o último clique do botão de impressão já processado,
-    # para não disparar window.print() de novo a cada reexecução reativa.
-    get_ultimo_clique_impressao, set_ultimo_clique_impressao = mo.state(0)
-    botao_imprimir = mo.ui.button(label="🖨️ Imprimir / Salvar como PDF", kind="neutral")
-    return (
-        botao_imprimir,
-        get_ultimo_clique_impressao,
-        set_ultimo_clique_impressao,
-    )
-
-
-@app.cell
 def _(
-    botao_imprimir,
-    get_ultimo_clique_impressao,
-    set_ultimo_clique_impressao,
-    sys,
-):
-    # mo.Html com onclick é sanitizado pelo marimo (DOMPurify remove atributos on*),
-    # então o clique precisa ser tratado aqui e o print disparado via Pyodide (só existe em WASM).
-    if botao_imprimir.value != get_ultimo_clique_impressao():
-        set_ultimo_clique_impressao(botao_imprimir.value)
-        if sys.platform == "emscripten":
-            from js import window
-            window.print()
-    return
-
-
-@app.cell
-def _(
-    botao_imprimir,
     con,
     filtro_acao,
     filtro_flags,
@@ -1377,6 +1345,12 @@ def _(
     css_impressao = mo.Html("""
         <style>
         @media print {
+            /* Forçar paisagem e tamanho A4 */
+            @page {
+                size: A4 landscape;
+                margin: 10mm 8mm 10mm 8mm;
+            }
+
             /* Oculta header, sidebar e botão */
             .govbr-header,
             aside,
@@ -1386,32 +1360,51 @@ def _(
                 display: none !important;
             }
 
-            /* Remove margens e fundo */
+            /* Remove fundo e margens */
             body, html {
                 background-color: white !important;
                 margin: 0 !important;
                 padding: 0 !important;
+                -webkit-print-color-adjust: exact !important;
+                print-color-adjust: exact !important;
             }
 
-            /* Garante que o conteúdo ocupe a página toda */
+            /* Conteúdo ocupa largura total */
             main, marimo-app, marimo-island {
                 width: 100% !important;
                 margin: 0 !important;
                 padding: 0 !important;
             }
 
-            /* Tabelas não quebram no meio da página */
+            /* Tabelas: permitir quebra entre páginas, não dentro de uma linha */
             table {
-                page-break-inside: avoid;
+                page-break-inside: auto !important;
+                width: 100% !important;
+                font-size: 7pt !important;
             }
 
-            /* Cabeçalho de impressão com filtros aplicados */
+            tr {
+                page-break-inside: avoid !important;
+                page-break-after: auto !important;
+            }
+
+            thead {
+                display: table-header-group !important;
+            }
+
+            /* Botões de download ficam ocultos */
+            button {
+                display: none !important;
+            }
+
+            /* Cabeçalho de impressão */
             .print-header {
                 display: block !important;
-                margin-bottom: 20px;
+                margin-bottom: 10px;
                 font-family: 'Rawline', sans-serif;
+                font-size: 9pt;
                 border-bottom: 2px solid #1351b4;
-                padding-bottom: 10px;
+                padding-bottom: 6px;
             }
         }
 
@@ -1422,11 +1415,7 @@ def _(
         </style>
     """)
 
-    botao_imprimir_html = mo.Html(
-        f"<div class='no-print' style='margin-top: 24px; margin-bottom: 8px;'>{mo.as_html(botao_imprimir).text}</div>"
-    )
-
-    dash_content_final = mo.vstack([css_impressao, dash_content, botao_imprimir_html])
+    dash_content_final = mo.vstack([css_impressao, dash_content])
 
     # A última expressão do bloco é exibida na tela do dashboard.
     dash_content_final
