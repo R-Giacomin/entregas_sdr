@@ -327,6 +327,11 @@ def _(
             --marimo-font-family: 'Rawline', 'Raleway', 'Inter', sans-serif !important;
         }}
 
+        /* Remove o selo "made with marimo" fixo no canto — atrapalha tabelas largas */
+        [data-testid="watermark"] {{
+            display: none !important;
+        }}
+
         body, html, marimo-app, marimo-island, main {{
             font-family: 'Rawline', 'Raleway', sans-serif !important;
             background-color: #f2f5fd !important; /* Cor de fundo suave govbr */
