@@ -330,8 +330,14 @@ def _(
         body, html, marimo-app, marimo-island, main {{
             font-family: 'Rawline', 'Raleway', sans-serif !important;
             background-color: #f2f5fd !important; /* Cor de fundo suave govbr */
-            overflow: hidden !important; /* Trava o scroll global */
-            max-height: 100vh !important;
+        }}
+
+        /* Trava o scroll global só na tela; na impressão precisa fluir para várias páginas */
+        @media screen {{
+            body, html, marimo-app, marimo-island, main {{
+                overflow: hidden !important;
+                max-height: 100vh !important;
+            }}
         }}
 
         /* Novo header estático nativo */
@@ -381,7 +387,7 @@ def _(
         }}
 
         /* O Sidebar Marimo recupera sua borda nativa sem interferir */
-        aside, [data-testid="sidebar"], .sidebar {{
+        .app-sidebar, marimo-sidebar, aside, [data-testid="sidebar"], .sidebar {{
             background-color: #ffffff !important;
             border-right: 1px solid #e0e0e0 !important;
         }}
@@ -398,7 +404,7 @@ def _(
         }}
 
         /* Ajuste do Sidebar: Alinhando os rótulos à esquerda e os botões à direita */
-        .sidebar label, aside label, [data-testid="sidebar"] label {{
+        .app-sidebar label, marimo-sidebar label, .sidebar label, aside label, [data-testid="sidebar"] label {{
             display: flex !important;
             justify-content: space-between !important;
             align-items: center !important;
@@ -407,8 +413,8 @@ def _(
         }}
 
         /* Controla a largura do campo do botão para não empurrar ou esmagar o texto */
-        .sidebar select, aside select, [data-testid="sidebar"] select,
-        .sidebar input, aside input, [data-testid="sidebar"] input {{
+        .app-sidebar select, marimo-sidebar select, .sidebar select, aside select, [data-testid="sidebar"] select,
+        .app-sidebar input, marimo-sidebar input, .sidebar input, aside input, [data-testid="sidebar"] input {{
             max-width: 55% !important;
             margin-left: 10px !important;
             text-align: left !important;
@@ -433,13 +439,13 @@ def _(
             .govbr-main-header strong, .govbr-main-header p {{
                 color: #f8fafc !important;
             }}
-            aside, [data-testid="sidebar"], .sidebar {{
+            .app-sidebar, marimo-sidebar, aside, [data-testid="sidebar"], .sidebar {{
                 background-color: #0f172a !important;
                 border-right: 1px solid #1e293b !important;
                 color: #f8fafc !important;
             }}
             /* Força que todos os textos paralelos na barra lateral ganhem cor clara no modo noturno */
-            aside p, aside strong, [data-testid="sidebar"] p, [data-testid="sidebar"] strong, .sidebar p, .sidebar strong {{
+            .app-sidebar p, .app-sidebar strong, marimo-sidebar p, marimo-sidebar strong, aside p, aside strong, [data-testid="sidebar"] p, [data-testid="sidebar"] strong, .sidebar p, .sidebar strong {{
                 color: #f8fafc !important;
             }}
             .govbr-sidebar-title {{
@@ -1353,6 +1359,8 @@ def _(
 
             /* Oculta header, sidebar e botão */
             .govbr-header,
+            .app-sidebar,
+            marimo-sidebar,
             aside,
             [data-testid="sidebar"],
             .sidebar,
@@ -1376,11 +1384,66 @@ def _(
                 padding: 0 !important;
             }
 
-            /* Tabelas: permitir quebra entre páginas, não dentro de uma linha */
+            /* O marimo limita a saída de cada célula a 610px com scroll interno (.output-area);
+               isso corta o conteúdo na impressão se não for removido. */
+            .output-area {
+                max-height: none !important;
+                overflow: visible !important;
+            }
+
+            /* O marimo usa react-resizable-panels por baixo (divs com estilo inline
+               "flex: 1 1 0px; overflow: hidden" e "height: 100%; overflow: hidden",
+               sem classe/id estáveis pra mirar) que trava #App na altura da tela
+               (confirmado via DOM: scrollHeight 6236 x clientHeight 945, cortando
+               tudo que passa da tela). Como nenhuma dessas declarações usa !important,
+               um overflow:visible universal (baixa especificidade, mas importance
+               sempre vence sobre não-importance) desarma o corte em qualquer nível
+               da árvore sem precisar saber o nome exato de cada elemento. */
+            * {
+                overflow: visible !important;
+            }
+            #App, [data-panel], [data-panel-group], html, body {
+                height: auto !important;
+                max-height: none !important;
+            }
+
+            /* .govbr-table-container tem overflow-x: auto para rolagem na tela;
+               na impressão isso escondia as colunas fora da largura visível. */
+            .govbr-table-container {
+                overflow-x: visible !important;
+                overflow: visible !important;
+                max-width: none !important;
+                width: auto !important;
+            }
+
+            /* mo.vstack/mo.hstack geram divs com "display: flex" inline; containers flex
+               não se fragmentam entre páginas na impressão (limitação do Chrome), o que
+               travava o dashboard inteiro em 1 página. Força fluxo em bloco só na impressão. */
+            div[style*="display: flex"] {
+                display: block !important;
+            }
+
+            /* Tabelas: permitir quebra entre páginas, não dentro de uma linha.
+               table-layout: fixed força todas as colunas a caberem na largura da
+               página (sem cortar anos); fonte bem pequena + nowrap evita amontoar. */
             table {
                 page-break-inside: auto !important;
                 width: 100% !important;
-                font-size: 7pt !important;
+                table-layout: fixed !important;
+                font-size: 4.5pt !important;
+            }
+
+            table td, table th {
+                white-space: normal !important;
+                word-break: break-word !important;
+                padding: 1px 2px !important;
+            }
+
+            /* Coluna de rótulos (categorias) precisa de mais espaço que as colunas
+               numéricas; sem isso o table-layout:fixed divide tudo igualmente. */
+            th.row_heading {
+                width: 12% !important;
+                white-space: normal !important;
             }
 
             tr {
@@ -1415,7 +1478,14 @@ def _(
         </style>
     """)
 
-    dash_content_final = mo.vstack([css_impressao, dash_content])
+    aviso_impressao = mo.Html(
+        "<div class='print-header'>"
+        "📌 Para uma impressão mais legível, recomendamos filtrar o período (Anos) "
+        "para no máximo 6 anos antes de imprimir."
+        "</div>"
+    )
+
+    dash_content_final = mo.vstack([css_impressao, aviso_impressao, dash_content])
 
     # A última expressão do bloco é exibida na tela do dashboard.
     dash_content_final
