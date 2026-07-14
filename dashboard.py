@@ -1485,8 +1485,11 @@ def _(
 
     aviso_impressao = mo.Html(
         "<div class='print-header'>"
-        "📌 Para uma impressão mais legível, recomendamos filtrar o período (Anos) "
-        "para no máximo 6 anos antes de imprimir."
+        "<div>📌 Para uma impressão mais legível, recomendamos filtrar o período (Anos) "
+        "para no máximo 6 anos antes de imprimir.</div>"
+        "<div style='margin-top: 4px;'><strong>⚠️ Importante:</strong> antes de apertar Ctrl+P, "
+        "selecione um trecho de texto aqui dentro do painel (clique e arraste sobre qualquer "
+        "palavra) — sem isso, a impressão pode sair cortada em 1 página só.</div>"
         "</div>"
     )
 
