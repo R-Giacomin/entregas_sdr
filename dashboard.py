@@ -848,12 +848,12 @@ def _(
                 key_on="feature.properties.codarea",
                 fill_color="PuBuGn",
                 fill_opacity=0.9,
-                line_opacity=0.01,
+                line_opacity=0.0,
                 legend_name="Execução per capita (R$)",
                 bins=bins_jenks,
                 highlight=True,
                 reset=True,
-                smooth_factor=0.5,
+                smooth_factor=2.5,
                 nan_fill_color="white",
                 nan_fill_opacity=1.0
             ).add_to(_m)
